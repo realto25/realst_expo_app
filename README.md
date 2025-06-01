@@ -48,3 +48,72 @@ Join our community of developers creating universal apps.
 
 - [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
 - [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+
+```
+realest_project
+├─ .env
+├─ app
+│  ├─ (auth)
+│  │  ├─ sign-in.tsx
+│  │  ├─ sign-up.tsx
+│  │  ├─ welcome.tsx
+│  │  └─ _layout.tsx
+│  ├─ (client)
+│  │  ├─ (tabs)
+│  │  │  └─ Home.tsx
+│  │  ├─ index.tsx
+│  │  └─ _layout.tsx
+│  ├─ (guest)
+│  │  ├─ (tabs)
+│  │  │  ├─ Booking.tsx
+│  │  │  ├─ Explore.tsx
+│  │  │  ├─ Home.tsx
+│  │  │  ├─ Profile.tsx
+│  │  │  └─ _layout.tsx
+│  │  └─ _layout.tsx
+│  ├─ (manager)
+│  │  ├─ index.tsx
+│  │  └─ _layout.tsx
+│  ├─ +not-found.tsx
+│  ├─ index.tsx
+│  └─ _layout.tsx
+├─ app.json
+├─ assets
+│  ├─ fonts
+│  │  ├─ Manrope-Bold.ttf
+│  │  ├─ Manrope-Medium.ttf
+│  │  ├─ Manrope-Regular.ttf
+│  │  └─ SpaceMono-Regular.ttf
+│  └─ images
+│     ├─ adaptive-icon.png
+│     ├─ favicon.png
+│     ├─ icon.png
+│     ├─ partial-react-logo.png
+│     ├─ react-logo.png
+│     ├─ react-logo@2x.png
+│     ├─ react-logo@3x.png
+│     └─ splash-icon.png
+├─ babel.config.js
+├─ components
+│  ├─ CustomButton.tsx
+│  ├─ InputField.tsx
+│  ├─ OAuth.tsx
+│  └─ SignOutButton.tsx
+├─ eslint.config.js
+├─ global.css
+├─ lib
+│  ├─ auth.ts
+│  └─ fetch.ts
+├─ metro.config.js
+├─ nativewind-env.d.ts
+├─ package-lock.json
+├─ package.json
+├─ README.md
+├─ scripts
+│  └─ reset-project.js
+├─ tailwind.config.js
+├─ tsconfig.json
+└─ types
+   └─ type.d.ts
+
+```"# realst_expo_app" 
