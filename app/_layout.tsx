@@ -1,29 +1,68 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { useFonts } from 'expo-font';
-import { Stack } from 'expo-router';
-import { StatusBar } from 'expo-status-bar';
-import 'react-native-reanimated';
+// app/_layout.tsx
+import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
+import { tokenCache } from "@clerk/clerk-expo/token-cache";
+import { useFonts } from "expo-font";
+import { Stack, useRouter } from "expo-router";
+import * as SplashScreen from "expo-splash-screen";
+import { StatusBar } from "expo-status-bar";
+import { useEffect } from "react";
+import "react-native-reanimated";
+import "../global.css";
 
-import { useColorScheme } from '@/hooks/useColorScheme';
+SplashScreen.preventAutoHideAsync();
 
 export default function RootLayout() {
-  const colorScheme = useColorScheme();
-  const [loaded] = useFonts({
-    SpaceMono: require('../assets/fonts/SpaceMono-Regular.ttf'),
+  const [loaded, error] = useFonts({
+    manrope: require("../assets/fonts/Manrope-Regular.ttf"),
+    "manrope-medium": require("../assets/fonts/Manrope-Medium.ttf"),
+    "manrope-bold": require("../assets/fonts/Manrope-Bold.ttf"),
+    Space: require("../assets/fonts/SpaceMono-Regular.ttf"),
   });
 
-  if (!loaded) {
-    // Async font loading only occurs in development.
-    return null;
-  }
+  useEffect(() => {
+    if (loaded) SplashScreen.hideAsync();
+  }, [loaded]);
+
+  if (!loaded) return null;
 
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <Stack>
-        <Stack.Screen name="(tabs)" options={{ headerShown: false }} />
-        <Stack.Screen name="+not-found" />
-      </Stack>
+    <ClerkProvider tokenCache={tokenCache}>
+      <MainRouter />
       <StatusBar style="auto" />
-    </ThemeProvider>
+    </ClerkProvider>
+  );
+}
+
+function MainRouter() {
+  const {  isSignedIn } = useAuth();
+  const { user,isLoaded } = useUser();
+  const router = useRouter();
+  useEffect(() => {
+    if (isLoaded && user) {
+      const role = user.publicMetadata?.role;
+
+      switch (role) {
+        case "client":
+          router.replace("/(client)/(tabs)/Home");
+          break;
+        case "manager":
+          router.replace("/(manager)");
+          break;
+        default:
+          router.replace("/(guest)/(tabs)/Home");
+          break;
+      }
+    }
+  }, [isLoaded, user]);
+
+  return (
+    <Stack screenOptions={{ headerShown: false }}>
+      <Stack.Screen name="index" />
+      <Stack.Screen name="(auth)" />
+      <Stack.Screen name="(guest)" />
+      <Stack.Screen name="(client)" />
+      <Stack.Screen name="(manager)" />
+      <Stack.Screen name="+not-found" />
+    </Stack>
   );
 }
