@@ -373,3 +373,4 @@ export default function ProfilePage() {
     </ScrollView>
   );
 }
+//few more error need to be fixed
