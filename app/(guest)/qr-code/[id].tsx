@@ -27,7 +27,7 @@ export default function QrScreen() {
     <View className="items-center justify-center p-6">
       <Text className="text-lg font-bold mb-4">Your Visit QR Code</Text>
       <Image
-        source={{ uri: visit.qrCodeUrl }}
+        source={{ uri: visit.qrCode }}
         style={{ width: 250, height: 250 }}
       />
       <Text className="mt-4 text-gray-500">
