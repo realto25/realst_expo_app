@@ -1,5 +1,4 @@
-import { SignOutButton } from "@/components/SignOutButton";
-import { createOrUpdateUser, getUserProfile } from "@/lib/api";
+import { createOrUpdateUser, getUserProfile, updateUserProfile } from "@/lib/api";
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
@@ -28,7 +27,6 @@ interface UserProfile {
   updatedAt: string;
   _count?: {
     visitRequests: number;
-    feedback: number;
     ownedPlots: number;
   };
 }
@@ -54,24 +52,42 @@ export default function ProfilePage() {
     try {
       setLoading(true);
       const profileData = await getUserProfile(userId);
-      setProfile(profileData);
+      setProfile({
+        id: profileData.id,
+        clerkId: profileData.id,
+        name: `${profileData.firstName || ''} ${profileData.lastName || ''}`.trim() || "User",
+        email: profileData.emailAddresses[0]?.emailAddress || "",
+        phone: profileData.phoneNumbers[0]?.phoneNumber || "",
+        role: profileData.publicMetadata.role || "GUEST",
+        createdAt: new Date(profileData.createdAt).toISOString(),
+        updatedAt: new Date(profileData.updatedAt).toISOString(),
+      });
     } catch (error) {
       console.error("Error fetching profile:", error);
-      // If user doesn't exist in DB, create them
       if (user) {
         try {
-          await createOrUpdateUser({
+          const newUser = {
             clerkId: userId,
             name: user.fullName || user.firstName || "User",
             email: user.primaryEmailAddress?.emailAddress || "",
             phone: user.primaryPhoneNumber?.phoneNumber || "",
-            role: "GUEST",
-          });
-          // Retry fetching profile
+            role: "GUEST" as const,
+          };
+          await createOrUpdateUser(newUser);
           const profileData = await getUserProfile(userId);
-          setProfile(profileData);
+          setProfile({
+            id: profileData.id,
+            clerkId: profileData.id,
+            name: `${profileData.firstName || ''} ${profileData.lastName || ''}`.trim() || "User",
+            email: profileData.emailAddresses[0]?.emailAddress || "",
+            phone: profileData.phoneNumbers[0]?.phoneNumber || "",
+            role: profileData.publicMetadata.role || "GUEST",
+            createdAt: new Date(profileData.createdAt).toISOString(),
+            updatedAt: new Date(profileData.updatedAt).toISOString(),
+          });
         } catch (createError) {
           console.error("Error creating user:", createError);
+          Alert.alert("Error", "Failed to create user profile");
         }
       }
     } finally {
@@ -102,39 +118,27 @@ export default function ProfilePage() {
     }
 
     try {
-      await createOrUpdateUser({
-        clerkId: userId,
+      await updateUserProfile(userId, {
         name: editData.name.trim(),
-        email: profile?.email || "",
         phone: editData.phone.trim() || undefined,
-        role: profile?.role || "GUEST",
       });
-
       setEditModalVisible(false);
-      await fetchProfile(); // Refresh profile data
+      await fetchProfile();
       Alert.alert("Success", "Profile updated successfully");
-    } catch (error) {
+    } catch (error: any) {
       console.error("Error updating profile:", error);
-      Alert.alert("Error", "Failed to update profile");
+      Alert.alert("Error", error.message || "Failed to update profile");
     }
   };
 
-  const handleSignOut = () => {
-    Alert.alert("Sign Out", "Are you sure you want to sign out?", [
-      { text: "Cancel", style: "cancel" },
-      {
-        text: "Sign Out",
-        style: "destructive",
-        onPress: async () => {
-          try {
-            await signOut();
-            router.replace("/(auth)/sign-in");
-          } catch (error) {
-            console.error("Sign out error:", error);
-          }
-        },
-      },
-    ]);
+  const handleSignOut = async () => {
+    try {
+      await signOut();
+      router.replace("/(auth)/sign-in");
+    } catch (error) {
+      console.error("Sign out error:", error);
+      Alert.alert("Error", "Failed to sign out");
+    }
   };
 
   useEffect(() => {
@@ -198,9 +202,6 @@ export default function ProfilePage() {
             <Text className="text-white text-sm font-medium">
               {profile?.role || "GUEST"}
             </Text>
-          </View>
-          <View className="mt-2 p-3  bg-red-500 ">
-            <SignOutButton />
           </View>
         </View>
       </View>
@@ -278,12 +279,6 @@ export default function ProfilePage() {
               <Text className="text-gray-600 text-sm">Visit Requests</Text>
             </View>
             <View className="items-center flex-1">
-              <Text className="text-2xl font-bold text-green-500">
-                {profile._count.feedback}
-              </Text>
-              <Text className="text-gray-600 text-sm">Feedback Given</Text>
-            </View>
-            <View className="items-center flex-1">
               <Text className="text-2xl font-bold text-blue-500">
                 {profile._count.ownedPlots}
               </Text>
@@ -309,34 +304,8 @@ export default function ProfilePage() {
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.push("/feedback")}
-          className="bg-white rounded-xl p-4 flex-row items-center justify-between shadow-sm"
-        >
-          <View className="flex-row items-center">
-            <Ionicons name="chatbubble-outline" size={24} color="#fb6e14" />
-            <Text className="ml-3 text-gray-800 font-medium text-lg">
-              Feedback History
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          onPress={() => router.push("/settings")}
-          className="bg-white rounded-xl p-4 flex-row items-center justify-between shadow-sm"
-        >
-          <View className="flex-row items-center">
-            <Ionicons name="settings-outline" size={24} color="#fb6e14" />
-            <Text className="ml-3 text-gray-800 font-medium text-lg">
-              Settings
-            </Text>
-          </View>
-          <Ionicons name="chevron-forward" size={20} color="#9CA3AF" />
-        </TouchableOpacity>
-
-        <TouchableOpacity
           onPress={handleSignOut}
-          className="bg-red-50 border border-red-200 rounded-xl p-4 flex-row items-center justify-center mt-6"
+          className="bg-red-50 border border-red-200 rounded-xl p-4 flex-row items-center justify-center"
         >
           <Ionicons name="log-out-outline" size={24} color="#EF4444" />
           <Text className="ml-3 text-red-600 font-medium text-lg">

@@ -1,515 +1,883 @@
+// app/(tabs)/booking.tsx
 import { getVisitRequests, submitFeedback, VisitRequest as ApiVisitRequest } from "@/lib/api";
 import { useAuth } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
-import React, { useEffect, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ActivityIndicator,
   Alert,
   FlatList,
-  Image,
   KeyboardAvoidingView,
   Platform,
+  StyleSheet,
   Text,
   TextInput,
   TouchableOpacity,
   View,
-  SafeAreaView, // Import SafeAreaView
+  SafeAreaView,
+  RefreshControl,
 } from "react-native";
+import QRCode from "react-native-qrcode-svg";
+import NetInfo from "@react-native-community/netinfo";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 
-// Use the VisitRequest type directly from the API client for consistency
+// Types
 interface VisitRequest extends ApiVisitRequest {}
 
-export default function BookingsTab() {
+const Booking: React.FC = () => {
   const { userId, isSignedIn } = useAuth();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
   const [bookings, setBookings] = useState<VisitRequest[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [feedbackData, setFeedbackData] = useState<Record<string, FeedbackState>>({});
+  const [submitting, setSubmitting] = useState<Record<string, boolean>>({});
+  const [refreshing, setRefreshing] = useState(false);
+  const [isOnline, setIsOnline] = useState(true);
 
-  // Feedback states, now tracking per booking ID
-  const [rating, setRating] = useState<{ [id: string]: number }>({});
-  const [experience, setExperience] = useState<{ [id: string]: string }>({});
-  const [suggestions, setSuggestions] = useState<{ [id: string]: string }>({});
-  const [purchaseInterest, setPurchaseInterest] = useState<{
-    [id: string]: boolean | null;
-  }>({});
-  const [submitting, setSubmitting] = useState<{ [id: string]: boolean }>({});
-  // New state to track if feedback has been submitted for a booking
-  const [feedbackSubmitted, setFeedbackSubmitted] = useState<{ [id: string]: boolean }>({});
+  interface FeedbackState {
+    rating: number;
+    experience: string;
+    suggestions: string;
+    purchaseInterest: boolean | null;
+    submitted: boolean;
+  }
 
-  // Function to fetch bookings
-  const fetchBookings = async () => {
+  // Monitor network status
+  useEffect(() => {
+    const unsubscribe = NetInfo.addEventListener((state) => {
+      setIsOnline(state.isConnected ?? true);
+    });
+    return () => unsubscribe();
+  }, []);
+
+  // Fetch bookings
+  const fetchBookings = useCallback(async () => {
     if (!isSignedIn) {
       setError("Please sign in to view your bookings");
       setLoading(false);
       return;
     }
-    setLoading(true); // Set loading to true before fetching
-    setError(null); // Clear previous errors
+    if (!isOnline) {
+      setError("No internet connection. Please try again later.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const data = await getVisitRequests(userId);
+      setLoading(true);
+      const data = await getVisitRequests(userId!);
       setBookings(data);
-      // Initialize feedbackSubmitted state based on existing feedback (if backend provided this info)
-      // For now, we'll assume feedback is not submitted until user submits it.
-      // In a real app, you might fetch feedback status along with bookings.
-      const initialFeedbackStatus: { [key: string]: boolean } = {};
-      data.forEach(booking => {
-        // This is a placeholder. In a real app, your backend would tell you if feedback exists.
-        // For demonstration, we'll assume feedback is not submitted initially.
-        initialFeedbackStatus[booking.id] = false;
-      });
-      setFeedbackSubmitted(initialFeedbackStatus);
-    } catch (err) {
-      setError(
-        err instanceof Error ? err.message : "Failed to load bookings"
+      setFeedbackData(
+        data.reduce((acc, booking) => {
+          acc[booking.id] = {
+            rating: 0,
+            experience: "",
+            suggestions: "",
+            purchaseInterest: null,
+            submitted: false,
+          };
+          return acc;
+        }, {} as Record<string, FeedbackState>)
       );
+      setError(null);
+    } catch (err) {
+      setError("Failed to load bookings. Please try again.");
     } finally {
       setLoading(false);
     }
-  };
+  }, [isSignedIn, userId, isOnline]);
 
-  useEffect(() => {
-    fetchBookings();
-  }, [isSignedIn, userId]); // Re-fetch when sign-in status or userId changes
+  // Handle pull-to-refresh
+  const onRefresh = useCallback(async () => {
+    setRefreshing(true);
+    await fetchBookings();
+    setRefreshing(false);
+  }, [fetchBookings]);
 
-  const toggleExpand = (id: string) => {
-    setExpandedId((prev) => (prev === id ? null : id));
-  };
+  // Handle feedback submission
+  const handleSubmitFeedback = useCallback(
+    async (id: string) => {
+      if (!isSignedIn) {
+        Alert.alert("Error", "Please sign in to submit feedback");
+        return;
+      }
+      if (!isOnline) {
+        Alert.alert("Error", "No internet connection. Please try again later.");
+        return;
+      }
 
-  const handleSubmitFeedback = async (id: string) => {
-    if (!isSignedIn) {
-      Alert.alert("Error", "Please sign in to submit feedback");
-      return;
-    }
+      const { rating, experience, suggestions, purchaseInterest } = feedbackData[id];
 
-    // Basic validation
-    if (!rating[id] || rating[id] < 1 || rating[id] > 5) {
-      Alert.alert("Error", "Please provide a rating (1-5 stars)");
-      return;
-    }
-    if (!experience[id]?.trim()) {
-      Alert.alert("Error", "Please share your experience");
-      return;
-    }
-    if (!suggestions[id]?.trim()) {
-      Alert.alert("Error", "Please provide suggestions for improvement");
-      return;
-    }
-    if (purchaseInterest[id] === undefined || purchaseInterest[id] === null) {
-      Alert.alert("Error", "Please indicate your purchase interest");
-      return;
-    }
+      if (rating < 1 || rating > 5 || !experience.trim() || !suggestions.trim() || purchaseInterest === null) {
+        Alert.alert("Error", "Please complete all feedback fields");
+        return;
+      }
 
-    setSubmitting((prev) => ({ ...prev, [id]: true }));
+      setSubmitting((prev) => ({ ...prev, [id]: true }));
 
-    try {
-      await submitFeedback({
-        visitRequestId: id,
-        rating: rating[id],
-        experience: experience[id].trim(),
-        suggestions: suggestions[id].trim(),
-        purchaseInterest: purchaseInterest[id],
-        clerkId: userId!, // userId is guaranteed to be present if isSignedIn is true
-      });
+      try {
+        await submitFeedback({
+          visitRequestId: id,
+          rating,
+          experience: experience.trim(),
+          suggestions: suggestions.trim(),
+          purchaseInterest,
+          clerkId: userId!,
+        });
+
+        Alert.alert("Success", "Your feedback has been submitted successfully.");
+        setFeedbackData((prev) => ({
+          ...prev,
+          [id]: { ...prev[id], submitted: true },
+        }));
+        setExpandedId(null);
+      } catch (error: any) {
+        Alert.alert("Error", error.message || "Failed to submit feedback. Please try again.");
+      } finally {
+        setSubmitting((prev) => ({ ...prev, [id]: false }));
+      }
+    },
+    [isSignedIn, userId, feedbackData, isOnline]
+  );
+
+  // Handle cancel visit
+  const handleCancelVisit = useCallback(
+    async (id: string) => {
+      if (!isOnline) {
+        Alert.alert("Error", "No internet connection. Please try again later.");
+        return;
+      }
 
       Alert.alert(
-        "Thank You!",
-        "Your feedback has been submitted successfully.",
+        "Cancel Visit",
+        "Are you sure you want to cancel this visit?",
         [
+          { text: "No", style: "cancel" },
           {
-            text: "OK",
-            onPress: () => {
-              // Reset feedback states for this booking
-              setRating((prev) => ({ ...prev, [id]: 0 }));
-              setExperience((prev) => ({ ...prev, [id]: "" }));
-              setSuggestions((prev) => ({ ...prev, [id]: "" }));
-              setPurchaseInterest((prev) => ({ ...prev, [id]: null }));
-              setExpandedId(null); // Collapse the feedback form
-              setFeedbackSubmitted((prev) => ({ ...prev, [id]: true })); // Mark as submitted
-              // Optionally re-fetch bookings if the backend updates a 'feedback_submitted' flag
-              // fetchBookings();
+            text: "Yes",
+            style: "destructive",
+            onPress: async () => {
+              try {
+                // Replace with actual API call when available
+                // await api.delete(`/visit-requests/${id}`);
+                setBookings((prev) => prev.filter((booking) => booking.id !== id));
+                Alert.alert("Success", "Visit request cancelled successfully.");
+              } catch (error: any) {
+                Alert.alert("Error", "Failed to cancel visit. Please try again.");
+              }
             },
           },
         ]
       );
-    } catch (error) {
-      console.error("Feedback submission error:", error);
-      Alert.alert(
-        "Error",
-        error instanceof Error
-          ? error.message
-          : "Failed to submit feedback. Please try again."
-      );
-    } finally {
-      setSubmitting((prev) => ({ ...prev, [id]: false }));
-    }
-  };
+    },
+    [isOnline]
+  );
 
-  // Render content based on authentication, loading, and error states
-  let content;
+  // Fetch bookings on mount
+  useEffect(() => {
+    fetchBookings();
+  }, [fetchBookings]);
 
-  if (!isSignedIn) {
-    content = (
-      <View className="flex-1 justify-center items-center p-6">
-        <Ionicons name="person-circle-outline" size={80} color="#9ca3af" />
-        <Text className="text-gray-600 text-center text-lg font-medium mb-4 mt-2">
-          Please sign in to view your bookings.
-        </Text>
-        <TouchableOpacity
+  // Optimize FlatList rendering
+  const getItemLayout = useCallback(
+    (_: any, index: number) => ({
+      length: 120,
+      offset: 120 * index,
+      index,
+    }),
+    []
+  );
+
+  // Render content
+  const content = useMemo(() => {
+    if (!isSignedIn) {
+      return (
+        <EmptyState
+          title="Please sign in to view your bookings."
+          iconName="person-circle-outline"
+          buttonText="Sign In Now"
           onPress={() => router.push("/(auth)/sign-in")}
-          className="bg-orange-500 px-8 py-4 rounded-full shadow-md active:bg-orange-600"
-        >
-          <Text className="text-white font-bold text-base">Sign In Now</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  } else if (loading) {
-    content = (
-      <View className="flex-1 justify-center items-center">
-        <ActivityIndicator size="large" color="#fb6e14" />
-        <Text className="mt-4 text-gray-600 text-base">Loading your bookings...</Text>
-      </View>
-    );
-  } else if (error) {
-    content = (
-      <View className="flex-1 justify-center items-center p-6">
-        <Ionicons name="alert-circle-outline" size={80} color="#ef4444" />
-        <Text className="text-red-600 text-center text-lg font-medium mb-4 mt-2">
-          {error}
-        </Text>
-        <TouchableOpacity
-          onPress={fetchBookings} // Use the dedicated fetch function
-          className="bg-orange-500 px-8 py-4 rounded-full shadow-md active:bg-orange-600"
-        >
-          <Text className="text-white font-bold text-base">Try Again</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  } else if (bookings.length === 0) {
-    content = (
-      <View className="flex-1 justify-center items-center p-6">
-        <Ionicons name="calendar-outline" size={80} color="#9ca3af" />
-        <Text className="text-gray-600 text-center text-lg font-medium mb-4 mt-2">
-          You don't have any upcoming visit requests yet.
-        </Text>
-        <TouchableOpacity
-          onPress={() => router.push("/(tabs)/explore")} // Navigate to explore tab
-          className="bg-orange-500 px-8 py-4 rounded-full shadow-md active:bg-orange-600"
-        >
-          <Text className="text-white font-bold text-base">Book a Visit</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  } else {
-    content = (
+        />
+      );
+    }
+
+    if (loading) {
+      return <LoadingState message="Loading your bookings..." />;
+    }
+
+    if (error) {
+      return <ErrorState message={error} onRetry={fetchBookings} />;
+    }
+
+    if (bookings.length === 0) {
+      return (
+        <EmptyState
+          title="You don't have any upcoming visit requests yet."
+          iconName="calendar-outline"
+          buttonText="Book a Visit"
+          onPress={() => router.push("/(tabs)/explore")}
+        />
+      );
+    }
+
+    return (
       <FlatList
         data={bookings}
         keyExtractor={(item) => item.id}
-        renderItem={({ item }) => {
-          const isExpanded = expandedId === item.id;
-          const isApproved = item.status === "APPROVED";
-          const hasFeedbackBeenSubmitted = feedbackSubmitted[item.id];
-
-          // Format date and time - Added robust parsing and fallback
-          let formattedDate = 'N/A';
-          let formattedTime = 'N/A';
-          const visitDateTime = new Date(`${item.date}T${item.time}`);
-          if (!isNaN(visitDateTime.getTime())) { // Check if date is valid
-            formattedDate = visitDateTime.toLocaleDateString("en-US", {
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            });
-            formattedTime = visitDateTime.toLocaleTimeString("en-US", {
-              hour: "2-digit",
-              minute: "2-digit",
-              hour12: true,
-            });
-          } else {
-            console.warn(`Invalid date/time for booking ID ${item.id}: Date=${item.date}, Time=${item.time}`);
-            // Fallback to raw values if parsing fails
-            formattedDate = item.date || 'Invalid Date';
-            formattedTime = item.time || 'Invalid Time';
-          }
-
-          const expiresAtDate = item.expiresAt ? new Date(item.expiresAt) : null;
-          const isQrCodeExpired = expiresAtDate ? expiresAtDate < new Date() : false;
-
-          // Determine status badge color
-          let statusColor = "bg-gray-200 text-gray-700";
-          if (item.status === "APPROVED") {
-            statusColor = "bg-green-100 text-green-700";
-          } else if (item.status === "PENDING") {
-            statusColor = "bg-yellow-100 text-yellow-700";
-          } else if (item.status === "REJECTED") {
-            statusColor = "bg-red-100 text-red-700";
-          } else if (item.status === "COMPLETED") {
-            statusColor = "bg-blue-100 text-blue-700";
-          }
-
-          return (
-            <KeyboardAvoidingView
-              behavior={Platform.OS === "ios" ? "padding" : "height"}
-              className="mb-4"
-            >
-              <TouchableOpacity
-                onPress={() => toggleExpand(item.id)}
-                className="bg-white rounded-xl shadow-md p-4 border border-gray-100"
-                activeOpacity={0.8}
-              >
-                <View className="flex-row justify-between items-center">
-                  <View className="flex-1">
-                    <Text className="text-xl font-bold text-gray-800 mb-1">
-                      {item.plot.title}
-                    </Text>
-                    <Text className="text-gray-600 text-sm mb-1">
-                      Project: {item.plot.project.name}
-                    </Text>
-                    <Text className="text-gray-500 text-sm mb-2">
-                      Location: {item.plot.location}
-                    </Text>
-                    <Text className="text-base font-medium text-gray-700">
-                      Date: {formattedDate} at {formattedTime}
-                    </Text>
-                    <View className={`mt-2 px-3 py-1 rounded-full self-start ${statusColor}`}>
-                      <Text className={`text-xs font-semibold ${statusColor.includes('green') ? 'text-green-700' : statusColor.includes('yellow') ? 'text-yellow-700' : statusColor.includes('red') ? 'text-red-700' : statusColor.includes('blue') ? 'text-blue-700' : 'text-gray-700'}`}>
-                        Status: {item.status}
-                      </Text>
-                    </View>
-                  </View>
-                  <Ionicons
-                    name={isExpanded ? "chevron-up" : "chevron-down"}
-                    size={24}
-                    color="#666"
-                  />
-                </View>
-
-                {isExpanded && (
-                  <View className="mt-4 border-t border-gray-100 pt-4">
-                    {isApproved ? (
-                      <>
-                        <View className="items-center border border-orange-200 rounded-xl p-4 bg-orange-50 mb-6">
-                          <Text className="text-lg font-semibold text-orange-800 mb-3">
-                            Your Visit QR Code
-                          </Text>
-                          {item.qrCode ? (
-                            <>
-                              <Image
-                                source={{ uri: item.qrCode }}
-                                className="w-52 h-52 rounded-xl border border-orange-300"
-                                resizeMode="contain"
-                              />
-                              <Text className="mt-3 text-orange-700 font-medium text-center">
-                                Expires at: {expiresAtDate && !isNaN(expiresAtDate.getTime()) ? expiresAtDate.toLocaleString() : 'N/A'}
-                              </Text>
-                              {isQrCodeExpired && (
-                                <Text className="text-red-500 font-semibold mt-2 text-center">
-                                  This QR code has expired.
-                                </Text>
-                              )}
-                            </>
-                          ) : (
-                            <Text className="text-red-500 font-semibold text-center">
-                              QR Code not available.
-                            </Text>
-                          )}
-                        </View>
-
-                        {/* Feedback Form */}
-                        <View className="mt-2 bg-white rounded-xl p-4 shadow-sm border border-gray-100">
-                          <Text className="text-xl font-bold text-gray-800 mb-4 text-center">
-                            Share Your Feedback
-                          </Text>
-
-                          {hasFeedbackBeenSubmitted ? (
-                            <View className="flex-row items-center justify-center py-4 bg-green-50 rounded-lg">
-                              <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
-                              <Text className="text-green-700 font-semibold ml-2 text-base">
-                                Feedback already submitted for this visit!
-                              </Text>
-                            </View>
-                          ) : (
-                            <>
-                              {/* Rating */}
-                              <View className="mb-6">
-                                <Text className="text-base font-medium text-gray-700 mb-2">
-                                  How would you rate your visit? <Text className="text-red-500">*</Text>
-                                </Text>
-                                <View className="flex-row justify-center">
-                                  {[1, 2, 3, 4, 5].map((star) => (
-                                    <TouchableOpacity
-                                      key={star}
-                                      onPress={() =>
-                                        setRating((prev) => ({
-                                          ...prev,
-                                          [item.id]: star,
-                                        }))
-                                      }
-                                      className="p-2"
-                                    >
-                                      <Ionicons
-                                        name={
-                                          rating[item.id] >= star
-                                            ? "star"
-                                            : "star-outline"
-                                        }
-                                        size={36}
-                                        color={
-                                          rating[item.id] >= star ? "#fb6e14" : "#ccc"
-                                        }
-                                      />
-                                    </TouchableOpacity>
-                                  ))}
-                                </View>
-                                <Text className="text-center text-gray-500 mt-2 text-sm">
-                                  {rating[item.id] > 0
-                                    ? ["Poor", "Fair", "Good", "Very Good", "Excellent"][
-                                        rating[item.id] - 1
-                                      ]
-                                    : "Tap to rate your experience"}
-                                </Text>
-                              </View>
-
-                              {/* Experience */}
-                              <View className="mb-6">
-                                <Text className="text-base font-medium text-gray-700 mb-2">
-                                  Tell us about your experience <Text className="text-red-500">*</Text>
-                                </Text>
-                                <TextInput
-                                  className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-gray-700 min-h-[100px] text-base"
-                                  placeholder="What did you like or dislike about the property and your visit?"
-                                  multiline
-                                  numberOfLines={4}
-                                  value={experience[item.id] || ""}
-                                  onChangeText={(text) =>
-                                    setExperience((prev) => ({
-                                      ...prev,
-                                      [item.id]: text,
-                                    }))
-                                  }
-                                  style={{ textAlignVertical: 'top' }} // Ensures text starts from top
-                                />
-                              </View>
-
-                              {/* Suggestions */}
-                              <View className="mb-6">
-                                <Text className="text-base font-medium text-gray-700 mb-2">
-                                  Do you have any suggestions for improvement? <Text className="text-red-500">*</Text>
-                                </Text>
-                                <TextInput
-                                  className="bg-gray-50 border border-gray-200 rounded-lg p-3 text-gray-700 min-h-[100px] text-base"
-                                  placeholder="Your suggestions help us improve our services"
-                                  multiline
-                                  numberOfLines={4}
-                                  value={suggestions[item.id] || ""}
-                                  onChangeText={(text) =>
-                                    setSuggestions((prev) => ({
-                                      ...prev,
-                                      [item.id]: text,
-                                    }))
-                                  }
-                                  style={{ textAlignVertical: 'top' }} // Ensures text starts from top
-                                />
-                              </View>
-
-                              {/* Purchase Interest */}
-                              <View className="mb-8">
-                                <Text className="text-base font-medium text-gray-700 mb-2">
-                                  Are you interested in purchasing this property? <Text className="text-red-500">*</Text>
-                                </Text>
-                                <View className="flex-row justify-between">
-                                  {["Yes", "No", "Maybe"].map((option) => (
-                                    <TouchableOpacity
-                                      key={option}
-                                      onPress={() =>
-                                        setPurchaseInterest((prev) => ({
-                                          ...prev,
-                                          [item.id]:
-                                            option === "Yes"
-                                              ? true
-                                              : option === "No"
-                                              ? false
-                                              : null,
-                                        }))
-                                      }
-                                      className={`flex-1 mx-1 p-3 rounded-lg border ${
-                                        purchaseInterest[item.id] ===
-                                        (option === "Yes"
-                                          ? true
-                                          : option === "No"
-                                          ? false
-                                          : null)
-                                          ? "bg-orange-500 border-orange-500 shadow-sm"
-                                          : "bg-gray-50 border-gray-200"
-                                      }`}
-                                    >
-                                      <Text
-                                        className={`text-center font-medium text-base ${
-                                          purchaseInterest[item.id] ===
-                                          (option === "Yes"
-                                            ? true
-                                            : option === "No"
-                                            ? false
-                                            : null)
-                                            ? "text-white"
-                                            : "text-gray-700"
-                                        }`}
-                                      >
-                                        {option}
-                                      </Text>
-                                    </TouchableOpacity>
-                                  ))}
-                                </View>
-                              </View>
-
-                              {/* Submit Button */}
-                              <TouchableOpacity
-                                disabled={submitting[item.id]}
-                                onPress={() => handleSubmitFeedback(item.id)}
-                                className={`bg-orange-500 rounded-lg py-3 items-center shadow-md ${
-                                  submitting[item.id] ? "opacity-50" : "opacity-100"
-                                }`}
-                              >
-                                {submitting[item.id] ? (
-                                  <ActivityIndicator color="#fff" />
-                                ) : (
-                                  <Text className="text-white font-bold text-lg">
-                                    Submit Feedback
-                                  </Text>
-                                )}
-                              </TouchableOpacity>
-                            </>
-                          )}
-                        </View>
-                      </>
-                    ) : (
-                      <View className="mt-4 bg-blue-50 border border-blue-200 rounded-xl p-4">
-                        <Text className="text-blue-700 font-semibold text-center text-base tracking-wide">
-                          QR Code will be available once your visit request is approved.
-                        </Text>
-                        <Text className="text-blue-600 text-center text-sm mt-2">
-                          Please check back later or contact support if you have questions.
-                        </Text>
-                      </View>
-                    )}
-                  </View>
-                )}
-              </TouchableOpacity>
-            </KeyboardAvoidingView>
-          );
-        }}
-        contentContainerStyle={{ padding: 16 }}
-        className="flex-1"
+        renderItem={({ item }) => (
+          <BookingItem
+            item={item}
+            expandedId={expandedId}
+            toggleExpand={() =>
+              setExpandedId((prev) => (prev === item.id ? null : item.id))
+            }
+            feedbackData={feedbackData[item.id]}
+            setFeedbackData={(data) =>
+              setFeedbackData((prev) => ({
+                ...prev,
+                [item.id]: { ...prev[item.id], ...data },
+              }))
+            }
+            submitting={submitting[item.id]}
+            handleSubmitFeedback={() => handleSubmitFeedback(item.id)}
+            handleCancelVisit={() => handleCancelVisit(item.id)}
+          />
+        )}
+        contentContainerStyle={{ padding: 16, paddingBottom: insets.bottom }}
         showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#fb6e14" />
+        }
+        getItemLayout={getItemLayout}
       />
+    );
+  }, [
+    isSignedIn,
+    loading,
+    error,
+    bookings,
+    expandedId,
+    feedbackData,
+    submitting,
+    refreshing,
+    onRefresh,
+    handleSubmitFeedback,
+    handleCancelVisit,
+    insets.bottom,
+    router,
+  ]);
+
+  return (
+    <SafeAreaView style={styles.container}>
+      {content}
+    </SafeAreaView>
+  );
+};
+
+// Components
+const EmptyState: React.FC<{
+  title: string;
+  iconName: string;
+  buttonText: string;
+  onPress: () => void;
+}> = ({ title, iconName, buttonText, onPress }) => (
+  <View style={styles.emptyState}>
+    <Ionicons name={iconName} size={80} color="#6B7280" />
+    <Text style={styles.emptyStateText}>{title}</Text>
+    <TouchableOpacity
+      onPress={onPress}
+      style={styles.button}
+      accessibilityLabel={buttonText}
+      accessibilityRole="button"
+    >
+      <Text style={styles.buttonText}>{buttonText}</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+const LoadingState: React.FC<{ message: string }> = ({ message }) => (
+  <View style={styles.loadingState}>
+    <ActivityIndicator size="large" color="#fb6e14" />
+    <Text style={styles.loadingText}>{message}</Text>
+  </View>
+);
+
+const ErrorState: React.FC<{ message: string; onRetry: () => void }> = ({ message, onRetry }) => (
+  <View style={styles.errorState}>
+    <Ionicons name="alert-circle-outline" size={80} color="#ef4444" />
+    <Text style={styles.errorText}>{message}</Text>
+    <TouchableOpacity
+      onPress={onRetry}
+      style={styles.button}
+      accessibilityLabel="Retry loading bookings"
+      accessibilityRole="button"
+    >
+      <Text style={styles.buttonText}>Try Again</Text>
+    </TouchableOpacity>
+  </View>
+);
+
+const BookingItem: React.FC<{
+  item: VisitRequest;
+  expandedId: string | null;
+  toggleExpand: () => void;
+  feedbackData: FeedbackState;
+  setFeedbackData: (data: Partial<FeedbackState>) => void;
+  submitting: boolean | undefined;
+  handleSubmitFeedback: () => void;
+  handleCancelVisit: () => void;
+}> = React.memo(({ item, expandedId, toggleExpand, feedbackData, setFeedbackData, submitting, handleSubmitFeedback, handleCancelVisit }) => {
+  const isExpanded = expandedId === item.id;
+  const isApproved = item.status === "APPROVED";
+  const { rating, experience, suggestions, purchaseInterest, submitted } = feedbackData;
+
+  // Date and time formatting
+  const visitDateTime = new Date(`${item.date}T${item.time}`);
+  const formattedDate = visitDateTime.toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const formattedTime = visitDateTime.toLocaleTimeString("en-US", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: true,
+  });
+
+  return (
+    <KeyboardAvoidingView
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+      style={styles.bookingContainer}
+    >
+      <TouchableOpacity
+        onPress={toggleExpand}
+        style={styles.bookingHeader}
+        accessibilityLabel={`Expand booking details for ${item.plot.title}`}
+        accessibilityRole="button"
+      >
+        <View style={styles.bookingInfo}>
+          <Text style={styles.bookingTitle}>{item.plot.title}</Text>
+          <Text style={styles.bookingSubTitle}>Project: {item.plot.project.name}</Text>
+          <Text style={styles.bookingSubTitle}>Location: {item.plot.location}</Text>
+          <Text style={styles.bookingDate}>Date: {formattedDate} at {formattedTime}</Text>
+          <View style={[styles.statusBadge, getStatusColor(item.status)]}>
+            <Text style={styles.statusText}>Status: {item.status}</Text>
+          </View>
+        </View>
+        <Ionicons
+          name={isExpanded ? "chevron-up" : "chevron-down"}
+          size={24}
+          color="#666"
+        />
+      </TouchableOpacity>
+
+      {isExpanded && (
+        <View style={styles.expandedSection}>
+          {isApproved ? (
+            <QrCodeSection item={item} />
+          ) : (
+            <PendingApproval />
+          )}
+          {item.status === "PENDING" && (
+            <TouchableOpacity
+              onPress={handleCancelVisit}
+              style={styles.cancelButton}
+              accessibilityLabel="Cancel this visit request"
+              accessibilityRole="button"
+            >
+              <Text style={styles.cancelButtonText}>Cancel Visit</Text>
+            </TouchableOpacity>
+          )}
+          <FeedbackForm
+            feedbackData={feedbackData}
+            setFeedbackData={setFeedbackData}
+            submitting={submitting}
+            handleSubmitFeedback={handleSubmitFeedback}
+            submitted={submitted}
+          />
+        </View>
+      )}
+    </KeyboardAvoidingView>
+  );
+});
+
+const QrCodeSection: React.FC<{ item: VisitRequest }> = ({ item }) => {
+  const expiresAtDate = item.expiresAt ? new Date(item.expiresAt) : null;
+  const isQrCodeExpired = expiresAtDate ? expiresAtDate < new Date() : false;
+  // Use visit request ID as QR code value to avoid data size issue
+  const qrCodeValue = item.id; // e.g., "cmbdvotg10002ji04h71i5x2x"
+
+  return (
+    <View style={styles.qrCodeSection}>
+      <Text style={styles.qrCodeTitle}>Your Visit QR Code</Text>
+      {qrCodeValue ? (
+        <>
+          <QRCode
+            value={qrCodeValue}
+            size={200}
+            backgroundColor="#fff7ed"
+            color="#1F2937"
+          />
+          <Text style={styles.qrCodeExpiry}>
+            Expires at: {expiresAtDate && !isNaN(expiresAtDate.getTime()) ? expiresAtDate.toLocaleString() : "N/A"}
+          </Text>
+          {isQrCodeExpired && (
+            <Text style={styles.qrCodeExpired}>This QR code has expired.</Text>
+          )}
+        </>
+      ) : (
+        <Text style={styles.qrCodeNotAvailable}>QR Code not available.</Text>
+      )}
+    </View>
+  );
+};
+
+const PendingApproval: React.FC = () => (
+  <View style={styles.pendingApproval}>
+    <Text style={styles.pendingApprovalText}>
+      QR Code will be available once your visit request is approved.
+    </Text>
+    <Text style={styles.pendingApprovalDescription}>
+      Please check back later or contact support if you have questions.
+    </Text>
+  </View>
+);
+
+const FeedbackForm: React.FC<{
+  feedbackData: FeedbackState;
+  setFeedbackData: (data: Partial<FeedbackState>) => void;
+  submitting: boolean | undefined;
+  handleSubmitFeedback: () => void;
+  submitted: boolean;
+}> = ({ feedbackData, setFeedbackData, submitting, handleSubmitFeedback, submitted }) => {
+  const { rating, experience, suggestions, purchaseInterest } = feedbackData;
+
+  if (submitted) {
+    return (
+      <View style={styles.feedbackSubmitted}>
+        <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
+        <Text style={styles.feedbackSubmittedText}>
+          Feedback already submitted for this visit!
+        </Text>
+      </View>
     );
   }
 
   return (
-    <SafeAreaView className="flex-1 bg-gray-50">
-      {content}
-    </SafeAreaView>
+    <View style={styles.feedbackForm}>
+      <Text style={styles.feedbackFormTitle}>Share Your Feedback</Text>
+      <RatingSection rating={rating} setRating={(value) => setFeedbackData({ rating: value })} />
+      <TextInputSection
+        label="Tell us about your experience"
+        value={experience}
+        onChangeText={(text) => setFeedbackData({ experience: text })}
+      />
+      <TextInputSection
+        label="Do you have any suggestions for improvement?"
+        value={suggestions}
+        onChangeText={(text) => setFeedbackData({ suggestions: text })}
+      />
+      <PurchaseInterest
+        value={purchaseInterest}
+        setPurchaseInterest={(value) => setFeedbackData({ purchaseInterest: value })}
+      />
+      <SubmitButton submitting={submitting} onPress={handleSubmitFeedback} />
+    </View>
   );
-}
+};
+
+const RatingSection: React.FC<{ rating: number; setRating: (value: number) => void }> = ({ rating, setRating }) => (
+  <View style={styles.ratingSection}>
+    <Text style={styles.sectionLabel}>
+      How would you rate your visit? <Text style={styles.required}>*</Text>
+    </Text>
+    <View style={styles.ratingStars}>
+      {[1, 2, 3, 4, 5].map((star) => (
+        <TouchableOpacity
+          key={star}
+          onPress={() => setRating(star)}
+          style={styles.starButton}
+          accessibilityLabel={`Rate ${star} stars`}
+          accessibilityRole="button"
+        >
+          <Ionicons
+            name={rating >= star ? "star" : "star-outline"}
+            size={36}
+            color={rating >= star ? "#fb6e14" : "#ccc"}
+          />
+        </TouchableOpacity>
+      ))}
+    </View>
+    <Text style={styles.ratingDescription}>
+      {rating > 0 ? ["Poor", "Fair", "Good", "Very Good", "Excellent"][rating - 1] : "Tap to rate your experience"}
+    </Text>
+  </View>
+);
+
+const TextInputSection: React.FC<{
+  label: string;
+  value: string;
+  onChangeText: (text: string) => void;
+}> = ({ label, value, onChangeText }) => (
+  <View style={styles.textInputSection}>
+    <Text style={styles.sectionLabel}>
+      {label} <Text style={styles.required}>*</Text>
+    </Text>
+    <TextInput
+      style={styles.textInput}
+      placeholder="Your thoughts..."
+      placeholderTextColor="#6B7280"
+      multiline
+      numberOfLines={4}
+      value={value || ""}
+      onChangeText={onChangeText}
+      accessibilityLabel={label}
+      accessibilityRole="text"
+    />
+  </View>
+);
+
+const PurchaseInterest: React.FC<{
+  value: boolean | null;
+  setPurchaseInterest: (value: boolean | null) => void;
+}> = ({ value, setPurchaseInterest }) => (
+  <View style={styles.purchaseInterest}>
+    <Text style={styles.sectionLabel}>
+      Are you interested in purchasing this property? <Text style={styles.required}>*</Text>
+    </Text>
+    <View style={styles.purchaseButtons}>
+      {["Yes", "No", "Maybe"].map((option) => (
+        <TouchableOpacity
+          key={option}
+          onPress={() => setPurchaseInterest(option === "Yes" ? true : option === "No" ? false : null)}
+          style={[styles.purchaseButton, value === (option === "Yes" ? true : option === "No" ? false : null) ? styles.activePurchaseButton : null]}
+          accessibilityLabel={`Select ${option} for purchase interest`}
+          accessibilityRole="button"
+        >
+          <Text
+            style={[styles.purchaseButtonText, value === (option === "Yes" ? true : option === "No" ? false : null) ? styles.activePurchaseButtonText : null]}
+          >
+            {option}
+          </Text>
+        </TouchableOpacity>
+      ))}
+    </View>
+  </View>
+);
+
+const SubmitButton: React.FC<{ submitting: boolean | undefined; onPress: () => void }> = ({ submitting, onPress }) => (
+  <TouchableOpacity
+    onPress={onPress}
+    disabled={submitting}
+    style={[styles.submitButton, submitting ? styles.disabledButton : null]}
+    accessibilityLabel="Submit feedback"
+    accessibilityRole="button"
+  >
+    {submitting ? (
+      <ActivityIndicator color="#fff" />
+    ) : (
+      <Text style={styles.submitButtonText}>Submit Feedback</Text>
+    )}
+  </TouchableOpacity>
+);
+
+// Styles
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: "#F9FAFB",
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  emptyStateText: {
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "500",
+    color: "#6B7280",
+    marginVertical: 8,
+  },
+  button: {
+    backgroundColor: "#fb6e14",
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    borderRadius: 12,
+    marginTop: 16,
+  },
+  buttonText: {
+    color: "#FFF",
+    fontWeight: "600",
+    fontSize: 16,
+    textAlign: "center",
+  },
+  loadingState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  loadingText: {
+    fontSize: 16,
+    color: "#6B7280",
+    marginTop: 8,
+  },
+  errorState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    padding: 16,
+  },
+  errorText: {
+    textAlign: "center",
+    fontSize: 18,
+    fontWeight: "500",
+    color: "#ef4444",
+    marginVertical: 8,
+  },
+  bookingContainer: {
+    marginBottom: 16,
+  },
+  bookingHeader: {
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+    borderColor: "#e5e7eb",
+    borderWidth: 1,
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  bookingInfo: {
+    flex: 1,
+  },
+  bookingTitle: {
+    fontSize: 20,
+    fontWeight: "700",
+    color: "#1F2937",
+    marginBottom: 4,
+  },
+  bookingSubTitle: {
+    fontSize: 14,
+    color: "#6B7280",
+    marginBottom: 2,
+  },
+  bookingDate: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#374151",
+  },
+  statusBadge: {
+    marginTop: 8,
+    alignSelf: "flex-start",
+    paddingVertical: 4,
+    paddingHorizontal: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+  },
+  statusText: {
+    fontSize: 12,
+    fontWeight: "600",
+    color: "#FFF",
+  },
+  expandedSection: {
+    marginTop: 8,
+  },
+  qrCodeSection: {
+    borderWidth: 1,
+    borderColor: "#fed7aa",
+    backgroundColor: "#fff7ed",
+    borderRadius: 12,
+    padding: 16,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  qrCodeTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#c2410c",
+    marginBottom: 12,
+  },
+  qrCodeExpiry: {
+    fontWeight: "600",
+    color: "#c2410c",
+    marginTop: 8,
+  },
+  qrCodeExpired: {
+    fontWeight: "700",
+    color: "#e11d48",
+    marginTop: 8,
+    textAlign: "center",
+  },
+  qrCodeNotAvailable: {
+    fontWeight: "700",
+    color: "#e11d48",
+    textAlign: "center",
+  },
+  pendingApproval: {
+    borderWidth: 1,
+    borderColor: "#bfdbfe",
+    backgroundColor: "#eff6ff",
+    borderRadius: 12,
+    padding: 16,
+    textAlign: "center",
+  },
+  pendingApprovalText: {
+    fontSize: 16,
+    fontWeight: "500",
+    color: "#2563eb",
+  },
+  pendingApprovalDescription: {
+    fontSize: 14,
+    color: "#3b82f6",
+    marginTop: 4,
+  },
+  cancelButton: {
+    backgroundColor: "#ef4444",
+    borderRadius: 12,
+    padding: 12,
+    alignItems: "center",
+    marginBottom: 16,
+  },
+  cancelButtonText: {
+    color: "#FFF",
+    fontWeight: "600",
+    fontSize: 16,
+  },
+  feedbackForm: {
+    backgroundColor: "#FFF",
+    borderRadius: 12,
+    padding: 16,
+    shadowColor: "#000",
+    shadowOpacity: 0.05,
+    shadowRadius: 8,
+    elevation: 2,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+  },
+  feedbackFormTitle: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#1F2937",
+    textAlign: "center",
+    marginBottom: 16,
+  },
+  feedbackSubmitted: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 16,
+    backgroundColor: "#ecfdf5",
+    borderRadius: 12,
+  },
+  feedbackSubmittedText: {
+    fontWeight: "600",
+    color: "#22c55e",
+    marginLeft: 8,
+  },
+  ratingSection: {
+    marginBottom: 24,
+  },
+  sectionLabel: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#374151",
+    marginBottom: 8,
+  },
+  required: {
+    color: "#e11d48",
+  },
+  ratingStars: {
+    flexDirection: "row",
+    justifyContent: "center",
+  },
+  starButton: {
+    padding: 8,
+  },
+  ratingDescription: {
+    fontSize: 14,
+    color: "#6B7280",
+    textAlign: "center",
+    marginTop: 4,
+  },
+  textInputSection: {
+    marginBottom: 24,
+  },
+  textInput: {
+    fontSize: 16,
+    color: "#374151",
+    backgroundColor: "#f9fafb",
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    borderRadius: 8,
+    padding: 12,
+    textAlignVertical: "top",
+  },
+  purchaseInterest: {
+    marginBottom: 32,
+  },
+  purchaseButtons: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+  },
+  purchaseButton: {
+    flex: 1,
+    marginHorizontal: 4,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#e5e7eb",
+    backgroundColor: "#f9fafb",
+  },
+  activePurchaseButton: {
+    backgroundColor: "#fb6e14",
+    borderColor: "#fb6e14",
+  },
+  activePurchaseButtonText: {
+    color: "#FFF",
+  },
+  purchaseButtonText: {
+    color: "#374151",
+    textAlign: "center",
+    fontWeight: "500",
+  },
+  submitButton: {
+    backgroundColor: "#fb6e14",
+    borderRadius: 12,
+    paddingVertical: 12,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 2,
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  submitButtonText: {
+    color: "#FFF",
+    fontWeight: "700",
+    fontSize: 16,
+  },
+});
+
+// Utility function
+const getStatusColor = (status: string) => {
+  const colors = {
+    APPROVED: { backgroundColor: "#d1fae5", borderColor: "#10b981" },
+    PENDING: { backgroundColor: "#fef3c7", borderColor: "#f59e0b" },
+    REJECTED: { backgroundColor: "#fee2e2", borderColor: "#ef4444" },
+    COMPLETED: { backgroundColor: "#e0f2fe", borderColor: "#3b82f6" },
+  };
+  return colors[status as keyof typeof colors] || { backgroundColor: "#f3f4f6", borderColor: "#d1d5db" };
+};
+
+export default Booking;
