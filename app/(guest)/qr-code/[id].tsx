@@ -31,10 +31,16 @@ export default function QrScreen() {
   return (
     <View className="items-center justify-center p-6">
       <Text className="text-lg font-bold mb-4">Your Visit QR Code</Text>
+<<<<<<< HEAD
       <SvgUri
         width={250}
         height={250}
         uri={visit.qrCode} // Use SvgUri for SVG rendering
+=======
+      <Image
+        source={{ uri: visit.qrCode }}
+        style={{ width: 250, height: 250 }}
+>>>>>>> 5e45e8d9bb783ba0b7e2d0afd447315a1c46b7b9
       />
       <Text className="mt-4 text-gray-500">
         Expires at: {new Date(visit.expiresAt).toLocaleString()}
