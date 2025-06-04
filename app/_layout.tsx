@@ -34,8 +34,8 @@ export default function RootLayout() {
 }
 
 function MainRouter() {
-  const {  isSignedIn } = useAuth();
-  const { user,isLoaded } = useUser();
+  const { isSignedIn } = useAuth();
+  const { user, isLoaded } = useUser();
   const router = useRouter();
   useEffect(() => {
     if (isLoaded && user) {
@@ -49,7 +49,7 @@ function MainRouter() {
           router.replace("/(manager)");
           break;
         default:
-          router.replace("/(guest)/(tabs)/Home");
+          router.replace("/(client)/(tabs)/Home");
           break;
       }
     }

@@ -1,16 +1,51 @@
-import { Tabs } from "expo-router";
+import { Tabs } from 'expo-router';
 
-export default function ClientTabsLayout() {
+import { Ionicons } from '@expo/vector-icons';
+
+export default function TabLayout() {
   return (
-    <Tabs>
+    <Tabs 
+    screenOptions={{
+      headerShown:false
+    }}
+    >
       <Tabs.Screen
         name="Home"
         options={{
-          title: "Client Home",
-          // Add tab bar options here (icons, etc.)
+          title: 'Home',
+          tabBarIcon: ({ color }) => <Ionicons size={28} name="home-outline" color={color} />,
         }}
       />
-      {/* Add other client tab screens here */}
+       <Tabs.Screen
+        name="Properties"
+        options={{
+          title: 'Properties',
+          tabBarIcon: ({ color }) => <Ionicons size={28} name="add-circle-outline" color={color} />,
+        }}
+      />
+       <Tabs.Screen
+        name="Camera"
+        options={{
+          title: 'Camera',
+          tabBarIcon: ({ color }) => <Ionicons size={28} name="camera-outline" color={color} />,
+        }}
+      />
+        <Tabs.Screen
+        name="Sell"
+        options={{
+          title: 'sell',
+          tabBarIcon: ({ color }) => <Ionicons size={28} name="diamond-outline" color={color} />,
+        }}
+      />
+       <Tabs.Screen
+        name="Profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ color }) => <Ionicons size={28} name="person-outline" color={color} />,
+        }}
+      />
+      
+    
     </Tabs>
   );
 }

@@ -418,42 +418,6 @@ export const getUserProfile = async (
   }
 };
 
-// Update user profile
-export const updateUserProfile = async (
-  clerkId: string,
-  data: {
-    name?: string;
-    phone?: string;
-  }
-) => {
-  try {
-    const res = await api.put(`/users/profile`, {
-      clerkId,
-      ...data,
-    });
-    return res.data;
-  } catch (error) {
-    console.error("Error updating user profile:", error);
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
-        case 404:
-          throw new Error("User not found");
-        case 400:
-          throw new Error("Invalid profile data");
-        case 401:
-          throw new Error("Unauthorized access");
-        case 500:
-          throw new Error("Server error. Please try again later");
-        default:
-          throw new Error(
-            error.response?.data?.error || "Failed to update profile"
-          );
-      }
-    }
-    throw new Error("Failed to update profile");
-  }
-};
-
 // Get user's feedback history
 export const getUserFeedback = async (clerkId: string) => {
   try {
@@ -477,4 +441,41 @@ export const getUserFeedback = async (clerkId: string) => {
     }
     throw new Error("Failed to load feedback history");
   }
+};
+
+export const getLandsByPlotId = async (plotId: string) => {
+  const res = await fetch(
+    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/lands/by-plot?plotId=${plotId}`
+  );
+  if (!res.ok) throw new Error("Failed to fetch lands");
+  return await res.json();
+};
+
+export const getOwnedLands = async (clerkId: string) => {
+  const response = await fetch(
+    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/owned-lands?clerkId=${clerkId}`
+  );
+  if (!response.ok) throw new Error("Failed to fetch owned lands");
+  return await response.json();
+};
+
+export const getUserByClerkId = async (clerkId: string) => {
+  const res = await fetch(
+    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/users?clerkId=${clerkId}`
+  );
+  if (!res.ok) throw new Error("Failed to fetch user");
+  return await res.json();
+};
+
+export const updateUserProfile = async (clerkId: string, data: any) => {
+  const res = await fetch(
+    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/users?clerkId=${clerkId}`,
+    {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }
+  );
+  if (!res.ok) throw new Error("Failed to update profile");
+  return await res.json();
 };
