@@ -1,5 +1,6 @@
 import { Tabs } from "expo-router";
 import { Ionicons } from "@expo/vector-icons";
+import { IndianRupee } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
@@ -36,7 +37,7 @@ export default function TabLayout() {
         name="Sell"
         options={{
           title: "Sell",
-          tabBarIcon: ({ color }) => <Ionicons size={28} name="diamond-outline" color={color} />,
+          tabBarIcon: ({ color }) => <IndianRupee size={28} color={color} />,
         }}
       />
       <Tabs.Screen
