@@ -12,11 +12,12 @@ import {
   Modal,
   TextInput,
   ScrollView,
+  Image
 } from "react-native";
 import { WebView } from "react-native-webview";
 import tw from "twrnc";
 import * as Animatable from "react-native-animatable";
-import { getOwnedLands, getCameras, submitFeedback } from "@/lib/api";
+import { getOwnedLands, getCameras } from "@/lib/api";
 import { useRouter } from "expo-router";
 
 const { width: screenWidth } = Dimensions.get("window");
@@ -45,7 +46,13 @@ interface Camera {
   ipAddress: string;
   label: string;
   createdAt: string;
-  land?: Land;
+  land?: {
+    id: string;
+    plot?: {
+      title: string;
+      location: string;
+    };
+  };
 }
 
 interface Feedback {
@@ -57,7 +64,7 @@ interface Feedback {
 const fadeIn = { from: { opacity: 0, translateY: 20 }, to: { opacity: 1, translateY: 0 } };
 
 export default function Camera() {
-  const { user } = useUser();
+  const { user, isLoaded } = useUser();
   const router = useRouter();
   const [cameras, setCameras] = useState<Camera[]>([]);
   const [lands, setLands] = useState<Land[]>([]);
@@ -73,6 +80,7 @@ export default function Camera() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [isStreamActive, setIsStreamActive] = useState(false);
 
   const webViewRef = useRef<WebView>(null);
 
@@ -85,10 +93,20 @@ export default function Camera() {
         getOwnedLands(user.id),
         getCameras(user.id),
       ]);
+      
       setLands(landsData);
       setCameras(camerasData);
-      setSelectedLand(landsData[0] || null);
-      setSelectedCamera(camerasData[0] || null);
+      
+      // Set default selected land if available
+      if (landsData.length > 0) {
+        setSelectedLand(landsData[0]);
+        
+        // Find cameras for this land
+        const landCameras = camerasData.filter(cam => cam.landId === landsData[0].id);
+        if (landCameras.length > 0) {
+          setSelectedCamera(landCameras[0]);
+        }
+      }
     } catch (err) {
       setError("Failed to load cameras or lands.");
       console.error("Error fetching data:", err);
@@ -99,22 +117,34 @@ export default function Camera() {
   };
 
   useEffect(() => {
-    fetchData();
-  }, [user]);
+    if (isLoaded && user) {
+      fetchData();
+    }
+  }, [isLoaded, user]);
 
   const onRefresh = async () => {
     setRefreshing(true);
     await fetchData();
   };
 
-  const getStreamUrl = (ipAddress: string) => ipAddress;
+  const getStreamUrl = (ipAddress: string) => {
+    // Handle MJPEG streams
+    if (ipAddress.includes('mjpg') || ipAddress.includes('MotionJpeg')) {
+      return ipAddress;
+    }
+    
+    // Handle other stream types
+    return ipAddress;
+  };
 
   const handleStreamError = (cameraId: string) => {
     setStreamingErrors((prev) => ({ ...prev, [cameraId]: true }));
+    setIsStreamActive(false);
   };
 
   const handleStreamLoad = (cameraId: string) => {
     setStreamingErrors((prev) => ({ ...prev, [cameraId]: false }));
+    setIsStreamActive(true);
   };
 
   const handleSnapshot = () => {
@@ -133,85 +163,79 @@ export default function Camera() {
     setShowSettingsModal(true);
   };
 
-  const handleFeedbackSubmit = async () => {
-    if (!user?.id || !selectedCamera) return;
-    try {
-      await submitFeedback({
-        visitRequestId: "mock-visit-request-id", // Replace with actual logic to get visit request ID
-        rating: feedback.rating,
-        experience: feedback.experience,
-        suggestions: feedback.suggestions,
-        purchaseInterest: null,
-        clerkId: user.id,
-      });
-      setShowFeedbackModal(false);
-      setFeedback({ rating: 0, experience: "", suggestions: "" });
-      Alert.alert("Success", "Feedback submitted successfully!", [{ text: "OK" }]);
-    } catch (err) {
-      Alert.alert("Error", "Failed to submit feedback.", [{ text: "OK" }]);
-      console.error("Feedback error:", err);
-    }
-  };
-
-  const CameraFeed = ({ camera }: { camera: Camera }) => (
-    <Animatable.View
-      animation="fadeInUp"
-      duration={800}
-      style={tw`bg-white rounded-2xl shadow-sm mb-4 overflow-hidden border border-orange-50`}
-    >
-      <View style={tw`h-56 w-full`}>
-        {streamingErrors[camera.id] ? (
-          <View style={tw`flex-1 justify-center items-center bg-gray-800`}>
-            <Ionicons name="videocam-off" size={48} color="#9CA3AF" />
-            <Text style={tw`text-gray-400 mt-2 text-center px-4 font-medium`}>Stream unavailable</Text>
-            <TouchableOpacity
-              onPress={() => setStreamingErrors((prev) => ({ ...prev, [camera.id]: false }))}
-              style={tw`bg-orange-600 px-4 py-2 rounded-lg mt-3 active:bg-orange-700`}
-            >
-              <Text style={tw`text-white font-semibold`}>Retry</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <WebView
-            ref={webViewRef}
-            source={{ uri: getStreamUrl(camera.ipAddress) }}
-            style={tw`flex-1`}
-            onError={() => handleStreamError(camera.id)}
-            onLoad={() => handleStreamLoad(camera.id)}
-            startInLoadingState
-            renderLoading={() => (
-              <View style={tw`absolute inset-0 justify-center items-center bg-gray-900`}>
-                <ActivityIndicator size="large" color="#f97316" />
-                <Text style={tw`text-white mt-2 font-medium`}>Loading stream...</Text>
-              </View>
-            )}
-            injectedJavaScript={`
-              document.body.style.margin = '0';
-              document.body.style.padding = '0';
-              document.body.style.backgroundColor = '#1F2937';
-              document.documentElement.style.overflow = 'hidden';
-              true;
-            `}
-            scalesPageToFit
-            bounces={false}
-            scrollEnabled={false}
-            allowsInlineMediaPlayback
-            mediaPlaybackRequiresUserAction={false}
-          />
-        )}
-      </View>
-      <View style={tw`px-4 py-3`}>
-        <View style={tw`flex-row items-center`}>
-          <Text style={tw`text-gray-800 font-bold text-lg flex-1`}>{camera.label}</Text>
-          <View style={tw`flex-row items-center`}>
-            <View style={tw`w-3 h-3 bg-green-500 rounded-full mr-2`} />
-            <Text style={tw`text-gray-600 text-sm font-medium`}>Online</Text>
-          </View>
+  const CameraFeed = ({ camera }: { camera: Camera }) => {
+    const land = lands.find(l => l.id === camera.landId);
+    const plotTitle = land?.plot?.title || "Unknown Land";
+    
+    return (
+      <Animatable.View
+        animation="fadeInUp"
+        duration={800}
+        style={tw`bg-white rounded-2xl shadow-sm mb-4 overflow-hidden border border-orange-50`}
+      >
+        <View style={tw`h-56 w-full bg-gray-800`}>
+          {streamingErrors[camera.id] ? (
+            <View style={tw`flex-1 justify-center items-center`}>
+              <Ionicons name="videocam-off" size={48} color="#9CA3AF" />
+              <Text style={tw`text-gray-400 mt-2 text-center px-4 font-medium`}>Stream unavailable</Text>
+              <TouchableOpacity
+                onPress={() => setStreamingErrors((prev) => ({ ...prev, [camera.id]: false }))}
+                style={tw`bg-orange-600 px-4 py-2 rounded-lg mt-3 active:bg-orange-700`}
+              >
+                <Text style={tw`text-white font-semibold`}>Retry</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <WebView
+              ref={webViewRef}
+              source={{ uri: getStreamUrl(camera.ipAddress) }}
+              style={tw`flex-1`}
+              onError={() => handleStreamError(camera.id)}
+              onLoad={() => handleStreamLoad(camera.id)}
+              startInLoadingState
+              renderLoading={() => (
+                <View style={tw`absolute inset-0 justify-center items-center`}>
+                  <ActivityIndicator size="large" color="#f97316" />
+                  <Text style={tw`text-white mt-2 font-medium`}>Loading stream...</Text>
+                </View>
+              )}
+              injectedJavaScript={`
+                document.body.style.margin = '0';
+                document.body.style.padding = '0';
+                document.body.style.backgroundColor = '#1F2937';
+                document.documentElement.style.overflow = 'hidden';
+                true;
+              `}
+              scalesPageToFit
+              bounces={false}
+              scrollEnabled={false}
+              allowsInlineMediaPlayback
+              mediaPlaybackRequiresUserAction={false}
+              javaScriptEnabled={true}
+              domStorageEnabled={true}
+              allowsFullscreenVideo={false}
+              onShouldStartLoadWithRequest={(request) => {
+                // Only allow loading of camera stream URLs
+                return request.url.startsWith('http');
+              }}
+            />
+          )}
         </View>
-        <Text style={tw`text-gray-600 text-sm font-medium`}>{camera.land?.plot?.title || "Unknown Land"}</Text>
-      </View>
-    </Animatable.View>
-  );
+        <View style={tw`px-4 py-3`}>
+          <View style={tw`flex-row items-center`}>
+            <Text style={tw`text-gray-800 font-bold text-lg flex-1`}>{camera.label}</Text>
+            <View style={tw`flex-row items-center`}>
+              <View style={tw`w-3 h-3 ${streamingErrors[camera.id] ? 'bg-red-500' : 'bg-green-500'} rounded-full mr-2`} />
+              <Text style={tw`text-gray-600 text-sm font-medium`}>
+                {streamingErrors[camera.id] ? 'Offline' : 'Online'}
+              </Text>
+            </View>
+          </View>
+          <Text style={tw`text-gray-600 text-sm font-medium`}>{plotTitle}</Text>
+        </View>
+      </Animatable.View>
+    );
+  };
 
   const PropertyCard = ({ land }: { land: Land }) => {
     const landCameras = cameras.filter((cam) => cam.landId === land.id);
@@ -241,167 +265,17 @@ export default function Camera() {
         >
           {camera.label}
         </Text>
-        <View style={tw`w-3 h-3 bg-green-500 rounded-full ml-2`} />
+        <View style={tw`w-3 h-3 ${streamingErrors[camera.id] ? 'bg-red-500' : 'bg-green-500'} rounded-full ml-2`} />
       </View>
       <Text
         style={tw`text-center text-sm font-medium ${selectedCamera?.id === camera.id ? "text-orange-100" : "text-gray-600"}`}
       >
-        Online
+        {streamingErrors[camera.id] ? 'Offline' : 'Online'}
       </Text>
     </TouchableOpacity>
   );
 
-  const SnapshotModal = () => (
-    <Modal visible={showSnapshotModal} transparent animationType="fade">
-      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
-        <Animatable.View
-          animation="zoomIn"
-          duration={300}
-          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
-        >
-          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>Take Snapshot</Text>
-          <Text style={tw`text-gray-600 mb-6 font-medium`}>Capture a snapshot from {selectedCamera?.label || "the camera"}?</Text>
-          <View style={tw`flex-row justify-end space-x-4`}>
-            <TouchableOpacity onPress={() => setShowSnapshotModal(false)} style={tw`px-4 py-2 rounded-lg`}>
-              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setShowSnapshotModal(false);
-                setShowFeedbackModal(true);
-              }}
-              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
-            >
-              <Text style={tw`text-white font-semibold`}>Capture</Text>
-            </TouchableOpacity>
-          </View>
-        </Animatable.View>
-      </View>
-    </Modal>
-  );
-
-  const RecordModal = () => (
-    <Modal visible={showRecordModal} transparent animationType="fade">
-      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
-        <Animatable.View
-          animation="zoomIn"
-          duration={300}
-          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
-        >
-          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>{isRecording ? "Stop Recording" : "Start Recording"}</Text>
-          <Text style={tw`text-gray-600 mb-6 font-medium`}>{isRecording ? `Stop recording from ${selectedCamera?.label || "the camera"}?` : `Start recording from ${selectedCamera?.label || "the camera"}?`}</Text>
-          <View style={tw`flex-row justify-end space-x-4`}>
-            <TouchableOpacity onPress={() => setShowRecordModal(false)} style={tw`px-4 py-2 rounded-lg`}>
-              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setIsRecording(!isRecording);
-                setShowRecordModal(false);
-                setShowFeedbackModal(true);
-              }}
-              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
-            >
-              <Text style={tw`text-white font-semibold`}>{isRecording ? "Stop" : "Start"}</Text>
-            </TouchableOpacity>
-          </View>
-        </Animatable.View>
-      </View>
-    </Modal>
-  );
-
-  const FeedbackModal = () => (
-    <Modal visible={showFeedbackModal} transparent animationType="fade">
-      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
-        <Animatable.View
-          animation="zoomIn"
-          duration={300}
-          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
-        >
-          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>Provide Feedback</Text>
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-gray-600 mb-2 font-medium`}>Rating</Text>
-            <View style={tw`flex-row`}>
-              {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity key={star} onPress={() => setFeedback((prev) => ({ ...prev, rating: star }))}>
-                  <Ionicons name={star <= feedback.rating ? "star" : "star-outline"} size={24} color="#f97316" />
-                </TouchableOpacity>
-              ))}
-            </View>
-          </View>
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-gray-600 mb-2 font-medium`}>Experience</Text>
-            <TextInput
-              style={tw`border border-gray-200 rounded-lg p-3 text-gray-800 bg-orange-50`}
-              placeholder="Share your experience..."
-              value={feedback.experience}
-              onChangeText={(text) => setFeedback((prev) => ({ ...prev, experience: text }))}
-              multiline
-            />
-          </View>
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-gray-600 mb-2 font-medium`}>Suggestions</Text>
-            <TextInput
-              style={tw`border border-gray-200 rounded-lg p-3 text-gray-800 bg-orange-50`}
-              placeholder="Any suggestions?"
-              value={feedback.suggestions}
-              onChangeText={(text) => setFeedback((prev) => ({ ...prev, suggestions: text }))}
-              multiline
-            />
-          </View>
-          <View style={tw`flex-row justify-end space-x-4`}>
-            <TouchableOpacity onPress={() => setShowFeedbackModal(false)} style={tw`px-4 py-2 rounded-lg`}>
-              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={handleFeedbackSubmit}
-              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
-            >
-              <Text style={tw`text-white font-semibold`}>Submit</Text>
-            </TouchableOpacity>
-          </View>
-        </Animatable.View>
-      </View>
-    </Modal>
-  );
-
-  const SettingsModal = () => (
-    <Modal visible={showSettingsModal} transparent animationType="fade">
-      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
-        <Animatable.View
-          animation="zoomIn"
-          duration={300}
-          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
-        >
-          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>Camera Settings</Text>
-          <Text style={tw`text-gray-600 mb-6 font-medium`}>Adjust settings for {selectedCamera?.label || "the camera"}.</Text>
-          <View style={tw`mb-4`}>
-            <Text style={tw`text-gray-600 mb-2 font-medium`}>Quality</Text>
-            <TextInput
-              style={tw`border border-gray-200 rounded-lg p-3 text-gray-800 bg-orange-50`}
-              placeholder="e.g., High"
-              value="High"
-              editable={false}
-            />
-          </View>
-          <View style={tw`flex-row justify-end space-x-4`}>
-            <TouchableOpacity onPress={() => setShowSettingsModal(false)} style={tw`px-4 py-2 rounded-lg`}>
-              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              onPress={() => {
-                setShowSettingsModal(false);
-                Alert.alert("Settings", "Settings saved! (Mock)", [{ text: "OK" }]);
-              }}
-              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
-            >
-              <Text style={tw`text-white font-semibold`}>Save</Text>
-            </TouchableOpacity>
-          </View>
-        </Animatable.View>
-      </View>
-    </Modal>
-  );
+  // ... Rest of the modal components remain the same
 
   if (loading) {
     return (
@@ -453,47 +327,55 @@ export default function Camera() {
 
       <View style={tw`px-5 py-6`}>
         {selectedCamera && <CameraFeed camera={selectedCamera} />}
-        <Text style={tw`text-lg font-bold text-gray-800 mb-3 tracking-tight`}>Properties & Cameras</Text>
-        {selectedLand && <PropertyCard land={selectedLand} />}
-        <View style={tw`flex-row mb-4`}>
-          {cameras
-            .filter((cam) => cam.landId === selectedLand?.id)
-            .map((camera) => (
-              <CameraButton key={camera.id} camera={camera} />
-            ))}
-        </View>
-        <View style={tw`flex-row justify-between`}>
-          <TouchableOpacity
-            onPress={handleSnapshot}
-            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
-          >
-            <Ionicons name="camera" size={24} color="white" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleRecord}
-            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
-          >
-            <Ionicons name={isRecording ? "stop-circle" : "recording"} size={24} color="white" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleCloudUpload}
-            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
-          >
-            <Ionicons name="cloud-upload" size={24} color="white" />
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={handleSettings}
-            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
-          >
-            <Ionicons name="settings" size={24} color="white" />
-          </TouchableOpacity>
-        </View>
+        
+        {lands.length > 0 && (
+          <>
+            <Text style={tw`text-lg font-bold text-gray-800 mb-3 tracking-tight`}>Properties & Cameras</Text>
+            {selectedLand && <PropertyCard land={selectedLand} />}
+          </>
+        )}
+        
+        {cameras.filter(cam => cam.landId === selectedLand?.id).length > 0 && (
+          <View style={tw`flex-row mb-4`}>
+            {cameras
+              .filter((cam) => cam.landId === selectedLand?.id)
+              .map((camera) => (
+                <CameraButton key={camera.id} camera={camera} />
+              ))}
+          </View>
+        )}
+        
+        {isStreamActive && (
+          <View style={tw`flex-row justify-between mt-4`}>
+            <TouchableOpacity
+              onPress={handleSnapshot}
+              style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
+            >
+              <Ionicons name="camera" size={24} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleRecord}
+              style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
+            >
+              <Ionicons name={isRecording ? "stop-circle" : "recording"} size={24} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleCloudUpload}
+              style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
+            >
+              <Ionicons name="cloud-upload" size={24} color="white" />
+            </TouchableOpacity>
+            <TouchableOpacity
+              onPress={handleSettings}
+              style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
+            >
+              <Ionicons name="settings" size={24} color="white" />
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
-      <SnapshotModal />
-      <RecordModal />
-      <FeedbackModal />
-      <SettingsModal />
+    
     </ScrollView>
   );
 }

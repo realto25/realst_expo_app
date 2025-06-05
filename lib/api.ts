@@ -479,3 +479,204 @@ export const updateUserProfile = async (clerkId: string, data: any) => {
   if (!res.ok) throw new Error("Failed to update profile");
   return await res.json();
 };
+// ... existing imports and code ...
+
+// Camera types
+export type CameraType = {
+  id: string;
+  landId: string;
+  ipAddress: string;
+  label: string;
+  createdAt: string;
+  land?: {
+    id: string;
+    plot?: {
+      title: string;
+      location: string;
+    };
+  };
+};
+
+export type CreateCameraType = {
+  landId: string;
+  ipAddress: string;
+  label: string;
+};
+
+export type UpdateCameraType = {
+  ipAddress?: string;
+  label?: string;
+};
+
+// Camera API functions
+export const getCameras = async (clerkId: string): Promise<CameraType[]> => {
+  try {
+    const res = await api.get("/cameras", {
+      params: { clerkId }
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error fetching cameras:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new Error("Please sign in to view cameras");
+        case 404:
+          return [];
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to fetch cameras"
+          );
+      }
+    }
+    throw new Error("Failed to fetch cameras");
+  }
+};
+
+export const getCameraById = async (id: string, clerkId: string): Promise<CameraType | null> => {
+  try {
+    const res = await api.get(`/cameras/${id}`, {
+      params: { clerkId }
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error fetching camera:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new Error("Unauthorized access");
+        case 404:
+          return null;
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to fetch camera"
+          );
+      }
+    }
+    throw new Error("Failed to fetch camera");
+  }
+};
+
+export const createOrUpdateCamera = async (
+  data: CreateCameraType,
+  clerkId: string
+): Promise<CameraType> => {
+  try {
+    // Validate data
+    if (!data.landId?.trim()) {
+      throw new Error("Land ID is required");
+    }
+    if (!data.ipAddress?.trim()) {
+      throw new Error("IP Address is required");
+    }
+    if (!data.label?.trim()) {
+      throw new Error("Camera label is required");
+    }
+
+    const res = await api.post("/cameras", {
+      ...data,
+      clerkId
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error creating/updating camera:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 400:
+          throw new Error(
+            error.response.data?.error || "Invalid camera data"
+          );
+        case 401:
+          throw new Error("Please sign in to manage cameras");
+        case 403:
+          throw new Error("You don't have permission for this land");
+        case 404:
+          throw new Error("Land not found");
+        case 500:
+          throw new Error("Server error. Please try again later");
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to save camera"
+          );
+      }
+    }
+    throw new Error("Failed to save camera");
+  }
+};
+
+export const updateCamera = async (
+  id: string,
+  data: UpdateCameraType,
+  clerkId: string
+): Promise<CameraType> => {
+  try {
+    // Validate data
+    if (data.ipAddress && !data.ipAddress.trim()) {
+      throw new Error("IP Address is invalid");
+    }
+    if (data.label && !data.label.trim()) {
+      throw new Error("Camera label is invalid");
+    }
+
+    const res = await api.patch(`/cameras/${id}`, {
+      ...data,
+      clerkId
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error updating camera:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 400:
+          throw new Error(
+            error.response.data?.error || "Invalid camera data"
+          );
+        case 401:
+          throw new Error("Please sign in to update cameras");
+        case 403:
+          throw new Error("You don't have permission for this camera");
+        case 404:
+          throw new Error("Camera not found");
+        case 500:
+          throw new Error("Server error. Please try again later");
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to update camera"
+          );
+      }
+    }
+    throw new Error("Failed to update camera");
+  }
+};
+
+export const deleteCamera = async (
+  id: string,
+  clerkId: string
+): Promise<void> => {
+  try {
+    await api.delete(`/cameras/${id}`, {
+      params: { clerkId }
+    });
+  } catch (error) {
+    console.error("Error deleting camera:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 401:
+          throw new Error("Please sign in to delete cameras");
+        case 403:
+          throw new Error("You don't have permission for this camera");
+        case 404:
+          throw new Error("Camera not found");
+        case 500:
+          throw new Error("Server error. Please try again later");
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to delete camera"
+          );
+      }
+    }
+    throw new Error("Failed to delete camera");
+  }
+};
+
+// ... existing functions below ...
