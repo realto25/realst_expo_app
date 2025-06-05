@@ -1,4 +1,3 @@
-// File: app/(client)/OwnedPlotCard.tsx
 import { Link } from "expo-router";
 import {
   Image,
@@ -7,6 +6,8 @@ import {
   TouchableOpacity,
   View,
 } from "react-native";
+import tw from "twrnc";
+import * as Animatable from "react-native-animatable";
 
 interface Land {
   id: string;
@@ -30,6 +31,12 @@ interface OwnedPlotCardProps {
   land: Land;
 }
 
+// Define custom animations
+const fadeIn = {
+  from: { opacity: 0, translateY: 10 },
+  to: { opacity: 1, translateY: 0 },
+};
+
 export default function OwnedPlotCard({ land }: OwnedPlotCardProps) {
   const plot = land.plot;
   const project = plot?.project;
@@ -43,64 +50,88 @@ export default function OwnedPlotCard({ land }: OwnedPlotCardProps) {
 
   if (!plot) {
     return (
-      <View className="bg-white rounded-2xl shadow p-4 mb-4">
-        <Text className="text-red-500">Invalid plot data</Text>
-      </View>
+      <Animatable.View
+        animation={fadeIn}
+        duration={1000}
+        style={tw`bg-white rounded-2xl p-5 mb-4 shadow-sm border border-orange-50`}
+      >
+        <Text style={tw`text-red-500 text-base font-medium text-center`}>
+          Invalid plot data
+        </Text>
+      </Animatable.View>
     );
   }
 
   return (
-    <View className="bg-white rounded-2xl shadow p-4 mb-4">
+    <Animatable.View
+      animation={fadeIn}
+      duration={1000}
+      style={tw`bg-white rounded-2xl p-5 mb-4 shadow-sm border border-orange-50`}
+    >
       {/* Image */}
       {plot.imageUrls?.[0] && (
         <Image
           source={{ uri: plot.imageUrls[0] }}
-          className="h-36 w-full rounded-xl mb-4"
+          style={tw`h-40 w-full rounded-xl mb-4`}
+          resizeMode="cover"
         />
       )}
 
-      {/* Title */}
-      <Text className="text-xl font-bold text-gray-900 mb-1">{plot.title}</Text>
-      <Text className="text-gray-600 mb-2">{plot.location}</Text>
+      {/* Title and Location */}
+      <Text style={tw`text-xl font-bold text-gray-900 mb-1 tracking-tight`}>
+        {plot.title}
+      </Text>
+      <Text style={tw`text-gray-600 text-base font-medium mb-3`}>
+        {plot.location}
+      </Text>
 
       {/* Specs */}
-      <Text className="text-gray-500 mb-1">
-        {land.size || "N/A"} • Land No: {land.number || "N/A"}
-      </Text>
+      <View style={tw`flex-row items-center mb-3`}>
+        <Text style={tw`text-gray-500 text-sm font-medium`}>
+          {land.size || "N/A"} • Land No: {land.number || "N/A"}
+        </Text>
+      </View>
 
       {/* Project */}
       {project && (
-        <Text className="text-sm text-gray-400">Project: {project.name}</Text>
+        <Text style={tw`text-sm text-gray-400 font-medium mb-4`}>
+          Project: {project.name}
+        </Text>
       )}
 
       {/* QR Code Section */}
       {land.qrCode && (
-        <View className="mt-4 mb-4 items-center">
-          <Text className="text-gray-600 mb-2 font-medium">Land QR Code</Text>
+        <View style={tw`mt-4 mb-4 items-center`}>
+          <Text style={tw`text-gray-600 mb-2 font-semibold text-sm uppercase tracking-wide`}>
+            Land QR Code
+          </Text>
           <Image
             source={getQrCodeImageSource(land.qrCode)}
-            className="w-32 h-32 rounded-lg"
+            style={tw`w-36 h-36 rounded-lg`}
             resizeMode="contain"
           />
         </View>
       )}
 
       {/* Footer Actions */}
-      <View className="flex-row justify-between items-center mt-4">
+      <View style={tw`flex-row justify-between items-center mt-4 gap-3`}>
         {land.qrCode && (
           <Link href={`/qr-code/${land.id}`} asChild>
-            <TouchableOpacity className="bg-red-500 px-4 py-2 rounded-xl">
-              <Text className="text-white font-semibold">View Full QR</Text>
+            <TouchableOpacity
+              style={tw`bg-orange-600 flex-1 px-4 py-3 rounded-xl shadow-sm active:bg-orange-700 transition-colors duration-200`}
+            >
+              <Text style={tw`text-white font-semibold text-center`}>View Full QR</Text>
             </TouchableOpacity>
           </Link>
         )}
-
         <Link href={`/plot/${land.id}`} asChild>
-          <TouchableOpacity className="bg-blue-500 px-4 py-2 rounded-xl">
-            <Text className="text-white font-semibold">View Details</Text>
+          <TouchableOpacity
+            style={tw`bg-orange-600 flex-1 px-4 py-3 rounded-xl shadow-sm active:bg-orange-700 transition-colors duration-200`}
+          >
+            <Text style={tw`text-white font-semibold text-center`}>View Details</Text>
           </TouchableOpacity>
         </Link>
       </View>
-    </View>
+    </Animatable.View>
   );
 }

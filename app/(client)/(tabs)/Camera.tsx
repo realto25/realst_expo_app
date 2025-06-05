@@ -1,25 +1,42 @@
+import { useUser } from "@clerk/clerk-expo";
 import { Ionicons } from "@expo/vector-icons";
-import React, { useState, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   ActivityIndicator,
   Alert,
   Dimensions,
-  FlatList,
   RefreshControl,
   Text,
   TouchableOpacity,
   View,
   Modal,
   TextInput,
+  ScrollView,
 } from "react-native";
 import { WebView } from "react-native-webview";
+import tw from "twrnc";
 import * as Animatable from "react-native-animatable";
+import { getOwnedLands, getCameras, submitFeedback } from "@/lib/api";
+import { useRouter } from "expo-router";
 
 const { width: screenWidth } = Dimensions.get("window");
 
 interface Land {
   id: string;
-  name: string;
+  number?: string;
+  size?: string;
+  status?: string;
+  qrCode?: string;
+  plot?: {
+    id: string;
+    title: string;
+    location: string;
+    imageUrls?: string[];
+    project?: {
+      id: string;
+      name: string;
+    };
+  };
 }
 
 interface Camera {
@@ -37,46 +54,15 @@ interface Feedback {
   suggestions: string;
 }
 
-// Mock data for UI/UX purposes
-const MOCK_LANDS: Land[] = [
-  { id: "1", name: "Premium Villa Plot A-123" },
-  { id: "2", name: "Plot B" },
-  { id: "3", name: "Plot C" },
-  { id: "4", name: "Plot D" },
-];
+const fadeIn = { from: { opacity: 0, translateY: 20 }, to: { opacity: 1, translateY: 0 } };
 
-const MOCK_CAMERAS: Camera[] = [
-  {
-    id: "1",
-    landId: "1",
-    ipAddress: "http://213.236.250.78/mjpg/video.mjpg",
-    label: "Main Entrance",
-    createdAt: "2025-06-04T17:26:55.489Z",
-    land: MOCK_LANDS[0],
-  },
-  {
-    id: "2",
-    landId: "1",
-    ipAddress: "http://213.236.250.78/mjpg/video.mjpg",
-    label: "Back Side",
-    createdAt: "2025-06-04T13:23:09.795Z",
-    land: MOCK_LANDS[0],
-  },
-  {
-    id: "3",
-    landId: "3",
-    ipAddress: "http://213.236.250.78/mjpg/video.mjpg",
-    label: "Entrance",
-    createdAt: "2025-06-04T13:22:24.674Z",
-    land: MOCK_LANDS[2],
-  },
-];
-
-const Camera = () => {
-  const [cameras] = useState<Camera[]>(MOCK_CAMERAS);
-  const [lands] = useState<Land[]>(MOCK_LANDS);
-  const [selectedLand, setSelectedLand] = useState<Land | null>(MOCK_LANDS[0]);
-  const [selectedCamera, setSelectedCamera] = useState<Camera | null>(MOCK_CAMERAS[0]);
+export default function Camera() {
+  const { user } = useUser();
+  const router = useRouter();
+  const [cameras, setCameras] = useState<Camera[]>([]);
+  const [lands, setLands] = useState<Land[]>([]);
+  const [selectedLand, setSelectedLand] = useState<Land | null>(null);
+  const [selectedCamera, setSelectedCamera] = useState<Camera | null>(null);
   const [streamingErrors, setStreamingErrors] = useState<{ [key: string]: boolean }>({});
   const [showSnapshotModal, setShowSnapshotModal] = useState(false);
   const [showRecordModal, setShowRecordModal] = useState(false);
@@ -84,8 +70,42 @@ const Camera = () => {
   const [showFeedbackModal, setShowFeedbackModal] = useState(false);
   const [showSettingsModal, setShowSettingsModal] = useState(false);
   const [feedback, setFeedback] = useState<Feedback>({ rating: 0, experience: "", suggestions: "" });
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [refreshing, setRefreshing] = useState(false);
 
   const webViewRef = useRef<WebView>(null);
+
+  const fetchData = async () => {
+    if (!user?.id) return;
+    setLoading(true);
+    setError(null);
+    try {
+      const [landsData, camerasData] = await Promise.all([
+        getOwnedLands(user.id),
+        getCameras(user.id),
+      ]);
+      setLands(landsData);
+      setCameras(camerasData);
+      setSelectedLand(landsData[0] || null);
+      setSelectedCamera(camerasData[0] || null);
+    } catch (err) {
+      setError("Failed to load cameras or lands.");
+      console.error("Error fetching data:", err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchData();
+  }, [user]);
+
+  const onRefresh = async () => {
+    setRefreshing(true);
+    await fetchData();
+  };
 
   const getStreamUrl = (ipAddress: string) => ipAddress;
 
@@ -113,43 +133,56 @@ const Camera = () => {
     setShowSettingsModal(true);
   };
 
-  const handleFeedbackSubmit = () => {
-    setShowFeedbackModal(false);
-    setFeedback({ rating: 0, experience: "", suggestions: "" });
+  const handleFeedbackSubmit = async () => {
+    if (!user?.id || !selectedCamera) return;
+    try {
+      await submitFeedback({
+        visitRequestId: "mock-visit-request-id", // Replace with actual logic to get visit request ID
+        rating: feedback.rating,
+        experience: feedback.experience,
+        suggestions: feedback.suggestions,
+        purchaseInterest: null,
+        clerkId: user.id,
+      });
+      setShowFeedbackModal(false);
+      setFeedback({ rating: 0, experience: "", suggestions: "" });
+      Alert.alert("Success", "Feedback submitted successfully!", [{ text: "OK" }]);
+    } catch (err) {
+      Alert.alert("Error", "Failed to submit feedback.", [{ text: "OK" }]);
+      console.error("Feedback error:", err);
+    }
   };
 
   const CameraFeed = ({ camera }: { camera: Camera }) => (
     <Animatable.View
       animation="fadeInUp"
       duration={800}
-      className="bg-white rounded-2xl shadow-sm mb-4 overflow-hidden"
+      style={tw`bg-white rounded-2xl shadow-sm mb-4 overflow-hidden border border-orange-50`}
     >
-      <View style={{ height: 220, width: "100%" }}>
+      <View style={tw`h-56 w-full`}>
         {streamingErrors[camera.id] ? (
-          <View className="flex-1 justify-center items-center bg-gray-800">
+          <View style={tw`flex-1 justify-center items-center bg-gray-800`}>
             <Ionicons name="videocam-off" size={48} color="#9CA3AF" />
-            <Text className="text-gray-400 mt-2 text-center px-4 font-sans">
-              Stream unavailable
-            </Text>
+            <Text style={tw`text-gray-400 mt-2 text-center px-4 font-medium`}>Stream unavailable</Text>
             <TouchableOpacity
               onPress={() => setStreamingErrors((prev) => ({ ...prev, [camera.id]: false }))}
-              className="bg-orange-500 px-4 py-2 rounded-lg mt-3"
+              style={tw`bg-orange-600 px-4 py-2 rounded-lg mt-3 active:bg-orange-700`}
             >
-              <Text className="text-white font-medium font-sans">Retry</Text>
+              <Text style={tw`text-white font-semibold`}>Retry</Text>
             </TouchableOpacity>
           </View>
         ) : (
           <WebView
             ref={webViewRef}
             source={{ uri: getStreamUrl(camera.ipAddress) }}
-            style={{ flex: 1 }}
+            style={tw`flex-1`}
             onError={() => handleStreamError(camera.id)}
             onLoad={() => handleStreamLoad(camera.id)}
             startInLoadingState
             renderLoading={() => (
-              <View className="absolute inset-0 justify-center items-center bg-gray-900">
-                <ActivityIndicator size="large" color="#F5A623" />
-                <Text className="text-white mt-2 font-sans">Loading stream...</Text>
+              <View style={tw`absolute inset-0 justify-center items-center bg-gray-900`}>
+                <ActivityIndicator size="large" color="#f97316" />
+                <Text style={tw`text-white mt-2 font-medium`}>Loading stream...</Text>
               </View>
             )}
             injectedJavaScript={`
@@ -167,17 +200,15 @@ const Camera = () => {
           />
         )}
       </View>
-      <View className="px-4 py-3">
-        <View className="flex-row items-center">
-          <Text className="text-gray-800 font-bold text-lg font-sans flex-1">
-            {camera.label}
-          </Text>
-          <View className="flex-row items-center">
-            <View className="w-3 h-3 bg-green-500 rounded-full mr-2" />
-            <Text className="text-gray-600 text-sm font-sans">Online</Text>
+      <View style={tw`px-4 py-3`}>
+        <View style={tw`flex-row items-center`}>
+          <Text style={tw`text-gray-800 font-bold text-lg flex-1`}>{camera.label}</Text>
+          <View style={tw`flex-row items-center`}>
+            <View style={tw`w-3 h-3 bg-green-500 rounded-full mr-2`} />
+            <Text style={tw`text-gray-600 text-sm font-medium`}>Online</Text>
           </View>
         </View>
-        <Text className="text-gray-600 text-sm font-sans">{camera.land?.name}</Text>
+        <Text style={tw`text-gray-600 text-sm font-medium`}>{camera.land?.plot?.title || "Unknown Land"}</Text>
       </View>
     </Animatable.View>
   );
@@ -188,14 +219,12 @@ const Camera = () => {
       <Animatable.View
         animation="fadeInUp"
         duration={800}
-        className="bg-gradient-to-r from-orange-500 to-orange-400 rounded-2xl shadow-sm p-4 mb-4"
+        style={tw`bg-orange-600 rounded-2xl shadow-sm p-4 mb-4`}
       >
-        <Text className="text-white font-bold text-lg font-sans">{land.name}</Text>
-        <View className="flex-row items-center mt-1">
+        <Text style={tw`text-white font-bold text-lg tracking-tight`}>{land.plot?.title || "Unknown Plot"}</Text>
+        <View style={tw`flex-row items-center mt-1`}>
           <Ionicons name="videocam" size={16} color="white" />
-          <Text className="text-white text-sm font-sans ml-2">
-            {landCameras.length} cameras
-          </Text>
+          <Text style={tw`text-orange-100 text-sm font-medium ml-2`}>{landCameras.length} cameras</Text>
         </View>
       </Animatable.View>
     );
@@ -204,62 +233,46 @@ const Camera = () => {
   const CameraButton = ({ camera }: { camera: Camera }) => (
     <TouchableOpacity
       onPress={() => setSelectedCamera(camera)}
-      className={`flex-1 mx-1 py-3 rounded-xl shadow-sm ${
-        selectedCamera?.id === camera.id
-          ? "bg-gradient-to-r from-orange-500 to-orange-400"
-          : "bg-white"
-      }`}
+      style={tw`flex-1 mx-1 py-3 rounded-xl shadow-sm ${selectedCamera?.id === camera.id ? "bg-orange-600" : "bg-white"}`}
     >
-      <View className="flex-row items-center justify-center">
+      <View style={tw`flex-row items-center justify-center`}>
         <Text
-          className={`text-center font-sans font-medium ${
-            selectedCamera?.id === camera.id ? "text-white" : "text-gray-800"
-          }`}
+          style={tw`text-center font-medium ${selectedCamera?.id === camera.id ? "text-white" : "text-gray-800"}`}
         >
           {camera.label}
         </Text>
-        <View className="w-3 h-3 bg-green-500 rounded-full ml-2" />
+        <View style={tw`w-3 h-3 bg-green-500 rounded-full ml-2`} />
       </View>
       <Text
-        className={`text-center text-sm font-sans ${
-          selectedCamera?.id === camera.id ? "text-orange-100" : "text-gray-600"
-        }`}
+        style={tw`text-center text-sm font-medium ${selectedCamera?.id === camera.id ? "text-orange-100" : "text-gray-600"}`}
       >
         Online
       </Text>
     </TouchableOpacity>
   );
 
-  // Modals
   const SnapshotModal = () => (
     <Modal visible={showSnapshotModal} transparent animationType="fade">
-      <View className="flex-1 justify-center items-center bg-black/60">
+      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
         <Animatable.View
           animation="zoomIn"
           duration={300}
-          className="bg-white rounded-2xl p-6 w-11/12 max-w-md"
+          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
         >
-          <Text className="text-xl font-bold text-gray-800 mb-4 font-sans">
-            Take Snapshot
-          </Text>
-          <Text className="text-gray-600 mb-6 font-sans">
-            Capture a snapshot from {selectedCamera?.label || "the camera"}?
-          </Text>
-          <View className="flex-row justify-end space-x-4">
-            <TouchableOpacity
-              onPress={() => setShowSnapshotModal(false)}
-              className="px-4 py-2 rounded-lg"
-            >
-              <Text className="text-gray-600 font-sans">Cancel</Text>
+          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>Take Snapshot</Text>
+          <Text style={tw`text-gray-600 mb-6 font-medium`}>Capture a snapshot from {selectedCamera?.label || "the camera"}?</Text>
+          <View style={tw`flex-row justify-end space-x-4`}>
+            <TouchableOpacity onPress={() => setShowSnapshotModal(false)} style={tw`px-4 py-2 rounded-lg`}>
+              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
                 setShowSnapshotModal(false);
                 setShowFeedbackModal(true);
               }}
-              className="bg-orange-500 px-4 py-2 rounded-lg"
+              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
             >
-              <Text className="text-white font-medium font-sans">Capture</Text>
+              <Text style={tw`text-white font-semibold`}>Capture</Text>
             </TouchableOpacity>
           </View>
         </Animatable.View>
@@ -269,26 +282,17 @@ const Camera = () => {
 
   const RecordModal = () => (
     <Modal visible={showRecordModal} transparent animationType="fade">
-      <View className="flex-1 justify-center items-center bg-black/60">
+      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
         <Animatable.View
           animation="zoomIn"
           duration={300}
-          className="bg-white rounded-2xl p-6 w-11/12 max-w-md"
+          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
         >
-          <Text className="text-xl font-bold text-gray-800 mb-4 font-sans">
-            {isRecording ? "Stop Recording" : "Start Recording"}
-          </Text>
-          <Text className="text-gray-600 mb-6 font-sans">
-            {isRecording
-              ? `Stop recording from ${selectedCamera?.label || "the camera"}?`
-              : `Start recording from ${selectedCamera?.label || "the camera"}?`}
-          </Text>
-          <View className="flex-row justify-end space-x-4">
-            <TouchableOpacity
-              onPress={() => setShowRecordModal(false)}
-              className="px-4 py-2 rounded-lg"
-            >
-              <Text className="text-gray-600 font-sans">Cancel</Text>
+          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>{isRecording ? "Stop Recording" : "Start Recording"}</Text>
+          <Text style={tw`text-gray-600 mb-6 font-medium`}>{isRecording ? `Stop recording from ${selectedCamera?.label || "the camera"}?` : `Start recording from ${selectedCamera?.label || "the camera"}?`}</Text>
+          <View style={tw`flex-row justify-end space-x-4`}>
+            <TouchableOpacity onPress={() => setShowRecordModal(false)} style={tw`px-4 py-2 rounded-lg`}>
+              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
@@ -296,11 +300,9 @@ const Camera = () => {
                 setShowRecordModal(false);
                 setShowFeedbackModal(true);
               }}
-              className="bg-orange-500 px-4 py-2 rounded-lg"
+              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
             >
-              <Text className="text-white font-medium font-sans">
-                {isRecording ? "Stop" : "Start"}
-              </Text>
+              <Text style={tw`text-white font-semibold`}>{isRecording ? "Stop" : "Start"}</Text>
             </TouchableOpacity>
           </View>
         </Animatable.View>
@@ -310,64 +312,52 @@ const Camera = () => {
 
   const FeedbackModal = () => (
     <Modal visible={showFeedbackModal} transparent animationType="fade">
-      <View className="flex-1 justify-center items-center bg-black/60">
+      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
         <Animatable.View
           animation="zoomIn"
           duration={300}
-          className="bg-white rounded-2xl p-6 w-11/12 max-w-md"
+          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
         >
-          <Text className="text-xl font-bold text-gray-800 mb-4 font-sans">
-            Provide Feedback
-          </Text>
-          <View className="mb-4">
-            <Text className="text-gray-600 mb-2 font-sans">Rating</Text>
-            <View className="flex-row">
+          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>Provide Feedback</Text>
+          <View style={tw`mb-4`}>
+            <Text style={tw`text-gray-600 mb-2 font-medium`}>Rating</Text>
+            <View style={tw`flex-row`}>
               {[1, 2, 3, 4, 5].map((star) => (
-                <TouchableOpacity
-                  key={star}
-                  onPress={() => setFeedback((prev) => ({ ...prev, rating: star }))}
-                >
-                  <Ionicons
-                    name={star <= feedback.rating ? "star" : "star-outline"}
-                    size={24}
-                    color="#F5A623"
-                  />
+                <TouchableOpacity key={star} onPress={() => setFeedback((prev) => ({ ...prev, rating: star }))}>
+                  <Ionicons name={star <= feedback.rating ? "star" : "star-outline"} size={24} color="#f97316" />
                 </TouchableOpacity>
               ))}
             </View>
           </View>
-          <View className="mb-4">
-            <Text className="text-gray-600 mb-2 font-sans">Experience</Text>
+          <View style={tw`mb-4`}>
+            <Text style={tw`text-gray-600 mb-2 font-medium`}>Experience</Text>
             <TextInput
-              className="border border-gray-200 rounded-lg p-3 text-gray-800 font-sans bg-orange-50"
+              style={tw`border border-gray-200 rounded-lg p-3 text-gray-800 bg-orange-50`}
               placeholder="Share your experience..."
               value={feedback.experience}
               onChangeText={(text) => setFeedback((prev) => ({ ...prev, experience: text }))}
               multiline
             />
           </View>
-          <View className="mb-4">
-            <Text className="text-gray-600 mb-2 font-sans">Suggestions</Text>
+          <View style={tw`mb-4`}>
+            <Text style={tw`text-gray-600 mb-2 font-medium`}>Suggestions</Text>
             <TextInput
-              className="border border-gray-200 rounded-lg p-3 text-gray-800 font-sans bg-orange-50"
+              style={tw`border border-gray-200 rounded-lg p-3 text-gray-800 bg-orange-50`}
               placeholder="Any suggestions?"
               value={feedback.suggestions}
               onChangeText={(text) => setFeedback((prev) => ({ ...prev, suggestions: text }))}
               multiline
             />
           </View>
-          <View className="flex-row justify-end space-x-4">
-            <TouchableOpacity
-              onPress={() => setShowFeedbackModal(false)}
-              className="px-4 py-2 rounded-lg"
-            >
-              <Text className="text-gray-600 font-sans">Cancel</Text>
+          <View style={tw`flex-row justify-end space-x-4`}>
+            <TouchableOpacity onPress={() => setShowFeedbackModal(false)} style={tw`px-4 py-2 rounded-lg`}>
+              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={handleFeedbackSubmit}
-              className="bg-orange-500 px-4 py-2 rounded-lg"
+              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
             >
-              <Text className="text-white font-medium font-sans">Submit</Text>
+              <Text style={tw`text-white font-semibold`}>Submit</Text>
             </TouchableOpacity>
           </View>
         </Animatable.View>
@@ -377,43 +367,35 @@ const Camera = () => {
 
   const SettingsModal = () => (
     <Modal visible={showSettingsModal} transparent animationType="fade">
-      <View className="flex-1 justify-center items-center bg-black/60">
+      <View style={tw`flex-1 justify-center items-center bg-black/60`}>
         <Animatable.View
           animation="zoomIn"
           duration={300}
-          className="bg-white rounded-2xl p-6 w-11/12 max-w-md"
+          style={tw`bg-white rounded-2xl p-6 w-11/12 max-w-md border border-orange-50`}
         >
-          <Text className="text-xl font-bold text-gray-800 mb-4 font-sans">
-            Camera Settings
-          </Text>
-          <Text className="text-gray-600 mb-6 font-sans">
-            Adjust settings for {selectedCamera?.label || "the camera"}.
-          </Text>
-          {/* Placeholder for settings options */}
-          <View className="mb-4">
-            <Text className="text-gray-600 mb-2 font-sans">Quality</Text>
+          <Text style={tw`text-xl font-bold text-gray-800 mb-4 tracking-tight`}>Camera Settings</Text>
+          <Text style={tw`text-gray-600 mb-6 font-medium`}>Adjust settings for {selectedCamera?.label || "the camera"}.</Text>
+          <View style={tw`mb-4`}>
+            <Text style={tw`text-gray-600 mb-2 font-medium`}>Quality</Text>
             <TextInput
-              className="border border-gray-200 rounded-lg p-3 text-gray-800 font-sans bg-orange-50"
+              style={tw`border border-gray-200 rounded-lg p-3 text-gray-800 bg-orange-50`}
               placeholder="e.g., High"
               value="High"
               editable={false}
             />
           </View>
-          <View className="flex-row justify-end space-x-4">
-            <TouchableOpacity
-              onPress={() => setShowSettingsModal(false)}
-              className="px-4 py-2 rounded-lg"
-            >
-              <Text className="text-gray-600 font-sans">Cancel</Text>
+          <View style={tw`flex-row justify-end space-x-4`}>
+            <TouchableOpacity onPress={() => setShowSettingsModal(false)} style={tw`px-4 py-2 rounded-lg`}>
+              <Text style={tw`text-gray-600 font-medium`}>Cancel</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => {
                 setShowSettingsModal(false);
                 Alert.alert("Settings", "Settings saved! (Mock)", [{ text: "OK" }]);
               }}
-              className="bg-orange-500 px-4 py-2 rounded-lg"
+              style={tw`bg-orange-600 px-4 py-2 rounded-lg active:bg-orange-700`}
             >
-              <Text className="text-white font-medium font-sans">Save</Text>
+              <Text style={tw`text-white font-semibold`}>Save</Text>
             </TouchableOpacity>
           </View>
         </Animatable.View>
@@ -421,64 +403,87 @@ const Camera = () => {
     </Modal>
   );
 
+  if (loading) {
+    return (
+      <View style={tw`flex-1 justify-center items-center bg-gray-50`}>
+        <Animatable.View animation={fadeIn} duration={800}>
+          <Ionicons name="videocam-outline" size={48} color="#f97316" />
+          <Text style={tw`text-gray-600 mt-3 text-base font-medium`}>Loading cameras...</Text>
+        </Animatable.View>
+      </View>
+    );
+  }
+
+  if (error || (!cameras.length && !lands.length)) {
+    return (
+      <View style={tw`flex-1 justify-center items-center bg-gray-50`}>
+        <Animatable.View animation={fadeIn} duration={1000}>
+          <Text style={tw`text-red-500 text-lg font-medium text-center`}>{error || "No cameras or lands found"}</Text>
+          <TouchableOpacity
+            style={tw`mt-6 bg-orange-600 px-6 py-3 rounded-xl shadow-sm active:bg-orange-700`}
+            onPress={onRefresh}
+          >
+            <Text style={tw`text-white font-semibold text-center`}>Retry</Text>
+          </TouchableOpacity>
+        </Animatable.View>
+      </View>
+    );
+  }
+
   return (
-    <View className="flex-1 bg-white">
-      {/* Header */}
-      <View className="pt-12 pb-4 px-5 flex-row items-center">
-        <TouchableOpacity className="p-2">
-          <Ionicons name="arrow-back" size={24} color="#1F2937" />
+    <ScrollView
+      style={tw`flex-1 bg-gray-50`}
+      refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#f97316" />}
+    >
+      <View style={tw`bg-orange-600 pt-12 pb-6 px-5 shadow-lg flex-row items-center`}>
+        <TouchableOpacity
+          style={tw`p-2 rounded-full bg-orange-700/20 active:bg-orange-700/40`}
+          onPress={() => router.back()}
+        >
+          <Ionicons name="arrow-back" size={24} color="white" />
         </TouchableOpacity>
-        <Text className="flex-1 text-center text-xl font-bold text-gray-800 font-sans">
+        <Animatable.Text
+          animation={fadeIn}
+          duration={1000}
+          style={tw`text-white text-2xl font-bold ml-4 tracking-tight`}
+        >
           Live Camera Feed
-        </Text>
-        <View className="w-10" /> {/* Spacer for centering */}
+        </Animatable.Text>
       </View>
 
-      {/* Main Content */}
-      <View className="flex-1 px-5">
-        {/* Camera Feed */}
+      <View style={tw`px-5 py-6`}>
         {selectedCamera && <CameraFeed camera={selectedCamera} />}
-
-        {/* Properties & Cameras */}
-        <Text className="text-lg font-bold text-gray-800 mb-3 font-sans">
-          Properties & Cameras
-        </Text>
+        <Text style={tw`text-lg font-bold text-gray-800 mb-3 tracking-tight`}>Properties & Cameras</Text>
         {selectedLand && <PropertyCard land={selectedLand} />}
-        <View className="flex-row mb-4">
+        <View style={tw`flex-row mb-4`}>
           {cameras
             .filter((cam) => cam.landId === selectedLand?.id)
             .map((camera) => (
               <CameraButton key={camera.id} camera={camera} />
             ))}
         </View>
-
-        {/* Controls */}
-        <View className="flex-row justify-between">
+        <View style={tw`flex-row justify-between`}>
           <TouchableOpacity
             onPress={handleSnapshot}
-            className="bg-orange-500 rounded-xl p-4 shadow-sm"
+            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
           >
             <Ionicons name="camera" size={24} color="white" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleRecord}
-            className="bg-orange-600 rounded-xl p-4 shadow-sm"
+            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
           >
-            <Ionicons
-              name={isRecording ? "stop-circle" : "recording"}
-              size={24}
-              color="white"
-            />
+            <Ionicons name={isRecording ? "stop-circle" : "recording"} size={24} color="white" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleCloudUpload}
-            className="bg-orange-400 rounded-xl p-4 shadow-sm"
+            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
           >
             <Ionicons name="cloud-upload" size={24} color="white" />
           </TouchableOpacity>
           <TouchableOpacity
             onPress={handleSettings}
-            className="bg-orange-300 rounded-xl p-4 shadow-sm"
+            style={tw`bg-orange-600 rounded-xl p-4 shadow-sm active:bg-orange-700`}
           >
             <Ionicons name="settings" size={24} color="white" />
           </TouchableOpacity>
@@ -489,8 +494,6 @@ const Camera = () => {
       <RecordModal />
       <FeedbackModal />
       <SettingsModal />
-    </View>
+    </ScrollView>
   );
-};
-
-export default Camera;
+}

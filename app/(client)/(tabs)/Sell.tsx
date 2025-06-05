@@ -1,4 +1,3 @@
-
 import { useAuth, useUser } from "@clerk/clerk-expo";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -15,21 +14,33 @@ import { useRouter } from "expo-router";
 import * as DocumentPicker from "expo-document-picker";
 import { getOwnedLands, submitSellRequest } from "@/lib/api";
 import { Ionicons } from "@expo/vector-icons";
+import tw from "twrnc";
+import * as Animatable from "react-native-animatable";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 interface Land {
   id: string;
-  name: string;
-  location: string;
-  size: number;
-  estimatedMarketValue?: number;
+  number?: string;
+  size?: string;
+  status?: string;
+  qrCode?: string;
+  plot?: {
+    id: string;
+    title: string;
+    location: string;
+    imageUrls?: string[];
+    project?: { id: string; name: string };
+  };
 }
 
 interface Document {
   uri: string;
   name: string;
   type: string;
-  size: number;
+  size?: number;
 }
+
+const fadeIn = { from: { opacity: 0, translateY: 20 }, to: { opacity: 1, translateY: 0 } };
 
 const urgencyOptions: { label: string; value: string }[] = [
   { label: "LOW\n6+ months", value: "low" },
@@ -63,23 +74,13 @@ export default function Sell() {
       router.replace("/(auth)/sign-in");
       return;
     }
-
     try {
       setError(null);
       const data = await getOwnedLands(clerkId);
-      console.log("Fetched lands:", data);
-      const validLands = (data ?? []).filter((land) => {
-        if (!land.id || !land.name || !land.location || !land.size) {
-          console.warn("Invalid land object:", land);
-          return false;
-        }
-        return true;
-      });
-      setLands(validLands);
+      setLands(data ?? []);
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : "Failed to load properties.";
-      setError(errorMessage);
-      Alert.alert("Error", errorMessage, [
+      setError("Failed to load properties.");
+      Alert.alert("Error", "Failed to load properties.", [
         { text: "Retry", onPress: () => fetchLands() },
         { text: "Go to Home", onPress: () => router.push("/(client)/(tabs)/Home") },
       ]);
@@ -103,7 +104,6 @@ export default function Sell() {
         type: ["application/pdf", "image/*"],
         multiple: true,
       });
-
       if (!result.canceled && result.assets) {
         const validDocs = result.assets.filter((asset) => {
           if (asset.size && asset.size > MAX_DOCUMENT_SIZE) {
@@ -112,17 +112,16 @@ export default function Sell() {
           }
           return true;
         });
-
         const newDocs: Document[] = validDocs.map((asset) => ({
           uri: asset.uri,
           name: asset.name,
           type: asset.mimeType ?? "application/octet-stream",
-          size: asset.size ?? 0,
+          size: asset.size,
         }));
         setDocuments((prev) => [...prev, ...newDocs]);
       }
     } catch (err) {
-      Alert.alert("Error", "Failed to pick document. Please try again.");
+      Alert.alert("Error", "Failed to pick document.");
     } finally {
       setUploading(false);
     }
@@ -133,341 +132,271 @@ export default function Sell() {
   };
 
   const handleSubmit = async () => {
-    if (!selectedLand) {
-      Alert.alert("Error", "Please select a property.");
+    if (!selectedLand || !askingPrice || !termsAgreed) {
+      Alert.alert("Error", "Please select a property, enter a price, and agree to terms.");
       return;
     }
-    if (!askingPrice || isNaN(Number(askingPrice)) || Number(askingPrice) <= 0) {
-      Alert.alert("Error", "Please enter a valid asking price.");
-      return;
-    }
-    if (description.length > MAX_DESCRIPTION_LENGTH) {
-      Alert.alert("Error", `Description cannot exceed ${MAX_DESCRIPTION_LENGTH} characters.`);
-      return;
-    }
-    if (!termsAgreed) {
-      Alert.alert("Error", "Please agree to the Terms & Conditions.");
-      return;
-    }
-
-    Alert.alert(
-      "Confirm",
-      "Are you sure you want to submit this sell request?",
-      [
-        { text: "Cancel", style: "cancel" },
-        {
-          text: "Submit",
-          onPress: async () => {
-            setSubmitting(true);
-            try {
-              await submitSellRequest({
-                userId: clerkId!,
-                landId: selectedLand.id,
-                askingPrice: Number(askingPrice),
-                urgency,
-                description,
-                agentAssistance,
-                documents,
-              });
-              Alert.alert("Success", "Sell request submitted successfully!", [
-                { text: "OK", onPress: () => router.push("/(client)/(tabs)/Home") },
-              ]);
-              setSelectedLand(null);
-              setAskingPrice("");
-              setDescription("");
-              setUrgency("normal");
-              setAgentAssistance(false);
-              setDocuments([]);
-              setTermsAgreed(false);
-            } catch (err) {
-              const errorMessage = err instanceof Error ? err.message : "Failed to submit sell request.";
-              Alert.alert("Error", errorMessage, [
-                { text: "OK" },
-                { text: "Retry", onPress: () => handleSubmit() },
-              ]);
-            } finally {
-              setSubmitting(false);
-            }
-          },
+    Alert.alert("Confirm", "Submit sell request?", [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: "Submit",
+        onPress: async () => {
+          setSubmitting(true);
+          try {
+            await submitSellRequest({
+              userId: clerkId!,
+              landId: selectedLand.id,
+              askingPrice: Number(askingPrice),
+              urgency,
+              description,
+              agentAssistance,
+              documents,
+            });
+            Alert.alert("Success", "Sell request submitted!", [
+              { text: "OK", onPress: () => router.push("/(client)/(tabs)/Home") },
+            ]);
+            setSelectedLand(null);
+            setAskingPrice("");
+            setDescription("");
+            setUrgency("normal");
+            setAgentAssistance(false);
+            setDocuments([]);
+            setTermsAgreed(false);
+          } catch (err) {
+            Alert.alert("Error", "Failed to submit sell request.", [{ text: "OK" }]);
+          } finally {
+            setSubmitting(false);
+          }
         },
-      ],
-      { cancelable: false }
-    );
+      },
+    ]);
   };
 
   if (loading) {
     return (
-      <View className="flex-1 justify-center items-center bg-gray-100">
-        <ActivityIndicator size="large" color="#f97316" />
-        <Text className="text-gray-700 mt-2 text-lg">Loading your properties...</Text>
-      </View>
+      <SafeAreaView style={tw`flex-1 justify-center items-center bg-gray-50`} edges={["top", "bottom"]}>
+        <Animatable.View animation={fadeIn} duration={300}>
+          <ActivityIndicator color="#f97316" size="large" />
+          <Text style={tw`text-gray-700 mt-2 text-lg font-semibold`}>Loading properties...</Text>
+        </Animatable.View>
+      </SafeAreaView>
     );
   }
 
-  if (error && lands.length === 0) {
+  if (error && !lands.length) {
     return (
-      <View className="flex-1 justify-center items-center bg-gray-100 p-4">
-        <Text className="text-red-500 text-lg text-center mb-4">{error}</Text>
-        <View className="flex-row space-x-4">
-          <Text
-            className="text-orange-600 underline"
-            onPress={fetchLands}
-            accessibilityRole="button"
-            accessibilityLabel="Retry loading properties"
-          >
-            Retry
-          </Text>
-          <Text
-            className="text-orange-600 underline"
-            onPress={() => router.push("/(client)/(tabs)/Home")}
-            accessibilityRole="button"
-            accessibilityLabel="Explore properties"
-          >
-            Add Property
-          </Text>
-        </View>
-      </View>
+      <SafeAreaView style={tw`flex-1 justify-center items-center bg-gray-50 p-4`} edges={["top", "bottom"]}>
+        <Animatable.View animation={fadeIn} duration={300}>
+          <Text style={tw`text-red-500 text-lg font-semibold text-center mb-4`}>{error}</Text>
+          <View style={tw`flex-row space-x-4`}>
+            <TouchableOpacity
+              style={tw`text-orange-600 underline`}
+              onPress={() => fetchLands()}
+            >
+              <Text>Retry</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={tw`text-orange-600 underline`}
+              onPress={() => router.push("/(client)/(tabs)/Home")}
+            >
+              <Text>Add Property</Text>
+            </TouchableOpacity>
+          </View>
+        </Animatable.View>
+      </SafeAreaView>
     );
   }
 
   return (
-    <ScrollView
-      className="flex-1 bg-gray-100 p-4"
-      contentContainerStyle={{ paddingBottom: 20 }}
-      accessibilityLabel="Request to sell plot form"
-    >
-      <Text
-        className="text-2xl font-bold mb-2 text-gray-900"
-        accessibilityRole="header"
-        accessibilityLabel="Request to Sell Plot"
+    <SafeAreaView style={tw`flex-1 bg-gray-50`} edges={["top", "bottom"]}>
+      <ScrollView
+        contentContainerStyle={tw`p-4 pb-20`}
       >
-        Request to Sell Plot
-      </Text>
+        <Animatable.View animation={fadeIn} duration={300}>
+          <Text style={tw`text-3xl font-bold text-gray-900 mb-2`}>Request to Sell Plot</Text>
+          <View style={tw`bg-orange-50 border border-orange-200 rounded-lg p-3 mb-4`}>
+            <Text style={tw`text-orange-600 text-sm font-medium`}>
+              Create a sell request for your property. Our team will review your request and connect you with potential buyers.
+            </Text>
+          </View>
+        </Animatable.View>
 
-      <View className="bg-orange-50 border border-orange-300 rounded-lg p-3 mb-4">
-        <Text className="text-orange-600 text-sm">
-          Create a sell request for your property. Our team will review your request and connect you with potential buyers or assist with the selling process.
-        </Text>
-      </View>
-
-      {/* Select Property */}
-      <View className="mb-4">
-        <Text className="text-lg font-semibold text-gray-900 mb-2">Select Property</Text>
-        <Text className="text-sm text-gray-700 mb-2">Choose which property you want to sell</Text>
-        {lands.length === 0 ? (
-          <Text className="text-red-500 mt-1">
-            No properties available. Add a property to start selling.
-          </Text>
-        ) : (
-          lands.map((land, index) => {
-            if (typeof land.estimatedMarketValue !== "number") {
-              console.warn(`Land at index ${index} has undefined estimatedMarketValue:`, land);
-            }
-            return (
-              <TouchableOpacity
-                key={land.id}
-                className={`bg-white border rounded-lg p-4 mb-2 flex-row items-center ${
-                  selectedLand?.id === land.id ? "border-orange-500" : "border-gray-300"
-                }`}
-                onPress={() => setSelectedLand(land)}
-                accessibilityRole="button"
-                accessibilityLabel={`Select ${land.name} at ${land.location}`}
-                accessibilityHint="Selects this property for selling"
-                disabled={submitting}
-              >
-                <View className="flex-1">
-                  <Text className="text-gray-900 font-semibold">{land.name}</Text>
-                  <Text className="text-gray-600 text-sm">{land.location}</Text>
-                  <Text className="text-gray-600 text-sm">
-                    Size: {land.size} sqft | Est. Value: ₹
-                    {typeof land.estimatedMarketValue === "number"
-                      ? land.estimatedMarketValue.toLocaleString()
-                      : "N/A"}
-                  </Text>
-                </View>
-                {selectedLand?.id === land.id && (
-                  <Ionicons name="checkmark-circle" size={24} color="#f97316" />
-                )}
-              </TouchableOpacity>
-            );
-          })
-        )}
-      </View>
-
-      {/* Asking Price */}
-      <View className="mb-4">
-        <Text className="text-lg font-semibold text-gray-900 mb-2">Asking Price</Text>
-        <Text className="text-sm text-gray-700 mb-2">Set your desired selling price (in INR)</Text>
-        <TextInput
-          className="bg-white border border-gray-300 rounded-lg p-3"
-          value={askingPrice}
-          onChangeText={setAskingPrice}
-          keyboardType="numeric"
-          placeholder="Enter asking price (e.g., 1000000)"
-          accessibilityLabel="Asking price input"
-          editable={!submitting}
-        />
-      </View>
-
-      {/* Description */}
-      <View className="mb-4">
-        <Text className="text-lg font-semibold text-gray-900 mb-2">Description</Text>
-        <Text className="text-sm text-gray-700 mb-2">
-          Provide details about the property (max {MAX_DESCRIPTION_LENGTH} characters)
-        </Text>
-        <TextInput
-          className="bg-white border border-gray-300 rounded-lg p-3 h-24"
-          value={description}
-          onChangeText={setDescription}
-          multiline
-          placeholder="Describe the property, location benefits, etc."
-          accessibilityLabel="Property description input"
-          maxLength={MAX_DESCRIPTION_LENGTH}
-          editable={!submitting}
-        />
-        <Text className="text-gray-500 text-sm mt-1">
-          {description.length}/{MAX_DESCRIPTION_LENGTH}
-        </Text>
-      </View>
-
-      {/* Urgency */}
-      <View className="mb-4">
-        <Text className="text-lg font-semibold text-gray-900 mb-2">Urgency</Text>
-        <Text className="text-sm text-gray-700 mb-2">How quickly do you want to sell?</Text>
-        <View className="flex-row justify-between">
-          {urgencyOptions.map((option) => (
-            <TouchableOpacity
-              key={option.value}
-              className={`flex-1 border rounded-lg p-3 mx-1 text-center ${
-                urgency === option.value ? "border-orange-500 bg-orange-50" : "border-gray-300 bg-white"
-              }`}
-              onPress={() => setUrgency(option.value)}
-              accessibilityRole="button"
-              accessibilityLabel={`Set urgency to ${option.label}`}
-              disabled={submitting}
-            >
-              <Text
-                className={`text-sm font-semibold ${
-                  urgency === option.value ? "text-orange-600" : "text-gray-700"
-                }`}
-                style={{ textAlign: "center" }}
-              >
-                {option.label}
-              </Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Agent Assistance */}
-      <View className="mb-4">
-        <Text className="text-lg font-semibold text-gray-900 mb-2">Agent Assistance</Text>
-        <Text className="text-sm text-gray-700 mb-2">
-          Would you like assistance from our real estate agent?
-        </Text>
-        <View className="flex-row items-center justify-between bg-white border border-gray-300 rounded-lg p-3">
-          <Text className="text-gray-900">Request Agent Assistance</Text>
-          <Switch
-            value={agentAssistance}
-            onValueChange={setAgentAssistance}
-            trackColor={{ false: "#d1d5db", true: "#f97316" }}
-            thumbColor={agentAssistance ? "#ffffff" : "#f4f4f5"}
-            accessibilityLabel="Toggle agent assistance"
-            disabled={submitting}
-          />
-        </View>
-      </View>
-
-      {/* Documents */}
-      <View className="mb-4">
-        <Text className="text-lg font-semibold text-gray-900 mb-2">Documents</Text>
-        <Text className="text-sm text-gray-700 mb-2">
-          Upload property documents (PDF or images, max 10MB each)
-        </Text>
-        <TouchableOpacity
-          className={`bg-orange-500 rounded-lg p-3 flex-row items-center justify-center ${
-            uploading || submitting ? "opacity-50" : ""
-          }`}
-          onPress={pickDocument}
-          disabled={uploading || submitting}
-          accessibilityRole="button"
-          accessibilityLabel="Upload documents"
-        >
-          {uploading ? (
-            <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
+        <Animatable.View animation={fadeIn} duration={300} style={tw`mb-4`}>
+          <Text style={tw`text-lg font-bold text-gray-900 mb-2`}>Select Property</Text>
+          <Text style={tw`text-sm text-gray-600 mb-2`}>Choose a property to sell</Text>
+          {lands.length === 0 ? (
+            <Animatable.Text animation={fadeIn} duration={600} style={tw`text-red-500 mt-1`}>
+              No properties available. Add a property to start selling.
+            </Animatable.Text>
           ) : (
-            <Ionicons name="cloud-upload-outline" size={20} color="white" />
-          )}
-          <Text className="text-white font-semibold ml-2">
-            {uploading ? "Uploading..." : "Upload Documents"}
-          </Text>
-        </TouchableOpacity>
-        {documents.length > 0 && (
-          <View className="mt-2">
-            {documents.map((doc) => (
-              <View
-                key={doc.uri}
-                className="bg-white border border-gray-300 rounded-lg p-3 mt-2 flex-row items-center justify-between"
+            lands.map((land, index) => (
+              <Animatable.View
+                key={land.id}
+                animation={fadeIn}
+                duration={600 + index * 100}
+                style={tw`mb-2`}
               >
-                <Text className="text-gray-900 flex-1" numberOfLines={1}>
-                  {doc.name}
-                </Text>
                 <TouchableOpacity
-                  onPress={() => removeDocument(doc.uri)}
+                  style={tw`bg-white border rounded-lg p-4 flex-row items-center justify-between border-${selectedLand?.id === land.id ? 'orange-500' : 'gray-200'}`}
+                  onPress={() => setSelectedLand(land)}
                   disabled={submitting}
-                  accessibilityRole="button"
-                  accessibilityLabel={`Remove ${doc.name}`}
                 >
-                  <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                  <View>
+                    <Text style={tw`text-gray-900 font-semibold`}>{land.plot?.title || 'Unknown Plot'}</Text>
+                    <Text style={tw`text-gray-600 text-sm`}>{land.plot?.location || 'N/A'}</Text>
+                    <Text style={tw`text-gray-600 text-sm`}>Size: {land.size || 'N/A'}</Text>
+                  </View>
+                  {selectedLand?.id === land.id && (
+                    <Ionicons name="checkmark-circle" size={24} color="#f97316" />
+                  )}
                 </TouchableOpacity>
-              </View>
+              </Animatable.View>
+            ))
+          )}
+        </Animatable.View>
+
+        <Animatable.View animation={fadeIn} duration={600} style={tw`mb-4`}>
+          <Text style={tw`text-lg font-bold text-gray-900 mb-2`}>Asking Price</Text>
+          <Text style={tw`text-sm text-gray-600 mb-2`}>Set your desired selling price (in INR)</Text>
+          <TextInput
+            style={tw`bg-white border border-gray-200 rounded-lg p-3 text-gray-800`}
+            value={askingPrice}
+            onChangeText={setAskingPrice}
+            keyboardType="numeric"
+            placeholder="Enter asking price (e.g., 1000000)"
+            editable={!submitting}
+          />
+        </Animatable.View>
+
+        <Animatable.View animation={fadeIn} duration={600} style={tw`mb-4`}>
+          <Text style={tw`text-lg font-bold text-gray-900 mb-2`}>Description</Text>
+          <Text style={tw`text-sm text-gray-600 mb-2`}>Provide details (max {MAX_DESCRIPTION_LENGTH} characters)</Text>
+          <TextInput
+            style={tw`bg-white border border-gray-200 rounded-lg p-3 h-24 text-gray-600`}
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            placeholder="Describe the property, location benefits, etc."
+            maxLength={MAX_DESCRIPTION_LENGTH}
+            editable={!submitting}
+          />
+          <Text style={tw`text-gray-500 text-sm mt-2`}>{description.length}/{MAX_DESCRIPTION_LENGTH}</Text>
+        </Animatable.View>
+
+        <Animatable.View animation={fadeIn} duration={600} style={tw`mb-4`}>
+          <Text style={tw`text-lg font-bold text-gray-900 mb-2`}>Urgency</Text>
+          <Text style={tw`text-sm text-gray-600 mb-2`}>How quickly do you want to sell?</Text>
+          <View style={tw`flex-row justify-between`}>
+            {urgencyOptions.map((opt, index) => (
+              <Animatable.View
+                key={opt.value}
+                animation={fadeIn}
+                duration={600 + index * 100}
+                style={tw`flex-1 mx-1`}
+              >
+                <TouchableOpacity
+                  style={tw`border rounded-lg p-3 text-center justify-center py-4 ${urgency === opt.value ? 'border-orange-500 bg-orange-200' : 'border-gray-200 bg-white'}`}
+                  onPress={() => setUrgency(opt.value)}
+                  disabled={submitting}
+                >
+                  <Text style={tw`text-sm font-semibold text-${urgency === opt.value ? 'orange-600' : 'gray-600'}`}>{opt.label}</Text>
+                </TouchableOpacity>
+              </Animatable.View>
             ))}
           </View>
-        )}
-      </View>
+        </Animatable.View>
 
-      {/* Terms & Conditions */}
-      <View className="mb-4">
-        <View className="flex-row items-center bg-white border border-gray-300 rounded-lg p-3">
-          <Switch
-            value={termsAgreed}
-            onValueChange={setTermsAgreed}
-            trackColor={{ false: "#d1d5db", true: "#f97316" }}
-            thumbColor={termsAgreed ? "#ffffff" : "#f4f4f5"}
-            accessibilityLabel="Agree to terms and conditions"
-            disabled={submitting}
-          />
-          <Text className="text-gray-900 ml-2 flex-1">
-            I agree to the{" "}
-            <Text
-              className="text-orange-600 underline"
-              onPress={() => Alert.alert("Terms", "View Terms & Conditions here. (Mock)")}
-            >
-              Terms & Conditions
+        <Animatable.View animation={fadeIn} duration={600} style={tw`mb-4`}>
+          <Text style={tw`text-lg font-bold text-gray-900 mb-2`}>Agent Assistance</Text>
+          <Text style={tw`text-sm text-gray-600 mb-2`}>Would you like assistance from our agent?</Text>
+          <View style={tw`flex-row items-center justify-between bg-white border border-gray-200 rounded-lg p-3`}>
+            <Text style={tw`text-gray-900 font-medium`}>Request Agent Assistance</Text>
+            <Switch
+              value={agentAssistance}
+              onValueChange={setAgentAssistance}
+              trackColor={{ false: "#d1d5db", true: "#f97316" }}
+              thumbColor="#ffffff"
+              disabled={submitting}
+            />
+          </View>
+        </Animatable.View>
+
+        <Animatable.View animation={fadeIn} duration={600} style={tw`mb-4`}>
+          <Text style={tw`text-lg font-bold text-gray-900 mb-2`}>Documents</Text>
+          <Text style={tw`text-sm text-gray-600 mb-2`}>Upload documents (PDF/images, max 10MB)</Text>
+          <TouchableOpacity
+            style={tw`bg-orange-600 rounded-lg p-3 flex-row items-center justify-center ${uploading || submitting ? 'opacity-50' : ''}`}
+            onPress={pickDocument}
+            disabled={uploading || submitting}
+          >
+            {uploading ? (
+              <ActivityIndicator size="small" color="white" style={tw`mr-2`} />
+            ) : (
+              <Ionicons name="cloud-upload-outline" size={20} color="white" />
+            )}
+            <Text style={tw`text-white font-semibold ml-2`}>{uploading ? "Uploading..." : "Upload Documents"}</Text>
+          </TouchableOpacity>
+          {documents.length > 0 && (
+            <View style={tw`mt-2`}>
+              {documents.map((doc, index) => (
+                <Animatable.View
+                  key={doc.uri}
+                  animation={fadeIn}
+                  duration={600 + index * 100}
+                  style={tw`bg-white border border-gray-200 rounded-lg p-3 mt-2 flex-row items-center justify-between`}
+                >
+                  <Text style={tw`text-gray-900 flex-1`} numberOfLines={1}>{doc.name}</Text>
+                  <TouchableOpacity
+                    onPress={() => removeDocument(doc.uri)}
+                    disabled={submitting}
+                  >
+                    <Ionicons name="trash-outline" size={20} color="#ef4444" />
+                  </TouchableOpacity>
+                </Animatable.View>
+              ))}
+            </View>
+          )}
+        </Animatable.View>
+
+        <Animatable.View animation={fadeIn} duration={600} style={tw`mb-4`}>
+          <View style={tw`flex-row items-center bg-white border border-gray-200 rounded-lg p-3`}>
+            <Switch
+              value={termsAgreed}
+              onValueChange={setTermsAgreed}
+              trackColor={{ false: "#d1d5db", true: "#f97316" }}
+              thumbColor="#ffffff"
+              disabled={submitting}
+            />
+            <Text style={tw`text-gray-900 ml-2 flex-1`}>
+              I agree to the{" "}
+              <Text
+                style={tw`text-orange-600 underline`}
+                onPress={() => Alert.alert("Terms", "View Terms & Conditions. (Mock)")}
+              >
+                Terms & Conditions
+              </Text>
             </Text>
-          </Text>
-        </View>
-      </View>
+          </View>
+        </Animatable.View>
 
-      {/* Submit Button */}
-      <TouchableOpacity
-        className={`bg-orange-600 rounded-lg p-4 flex-row items-center justify-center ${
-          submitting ? "opacity-50" : ""
-        }`}
-        onPress={handleSubmit}
-        disabled={submitting}
-        accessibilityRole="button"
-        accessibilityLabel="Submit sell request"
-      >
-        {submitting ? (
-          <ActivityIndicator size="small" color="white" style={{ marginRight: 8 }} />
-        ) : (
-          <Ionicons name="paper-plane-outline" size={20} color="white" />
-        )}
-        <Text className="text-white font-semibold ml-2">
-          {submitting ? "Submitting..." : "Submit Sell Request"}
-        </Text>
-      </TouchableOpacity>
-    </ScrollView>
+        <Animatable.View animation={fadeIn} duration={600}>
+          <TouchableOpacity
+            style={tw`bg-orange-600 rounded-lg p-4 flex-row items-center justify-center ${submitting ? 'opacity-50' : ''}`}
+            onPress={handleSubmit}
+            disabled={submitting}
+          >
+            {submitting ? (
+              <ActivityIndicator size="small" color="white" style={tw`mr-2`} />
+            ) : (
+              <Ionicons name="paper-plane-outline" size={20} color="white" />
+            )}
+            <Text style={tw`text-white font-semibold ml-2`}>{submitting ? "Submitting..." : "Submit Request"}</Text>
+          </TouchableOpacity>
+        </Animatable.View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
