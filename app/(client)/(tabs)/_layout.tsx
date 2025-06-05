@@ -1,51 +1,52 @@
-import { Tabs } from 'expo-router';
-
-import { Ionicons } from '@expo/vector-icons';
+import { Tabs } from "expo-router";
+import { Ionicons } from "@expo/vector-icons";
+import { IndianRupee } from 'lucide-react-native';
 
 export default function TabLayout() {
   return (
-    <Tabs 
-    screenOptions={{
-      headerShown:false
-    }}
+    <Tabs
+      screenOptions={{
+        headerShown: false,
+        tabBarActiveTintColor: "#f97316",
+        tabBarInactiveTintColor: "#6b7280",
+        tabBarStyle: { backgroundColor: "white", borderTopColor: "#f97316" },
+      }}
     >
       <Tabs.Screen
         name="Home"
         options={{
-          title: 'Home',
+          title: "Home",
           tabBarIcon: ({ color }) => <Ionicons size={28} name="home-outline" color={color} />,
         }}
       />
-       <Tabs.Screen
+      <Tabs.Screen
         name="Properties"
         options={{
-          title: 'Properties',
+          title: "Properties",
           tabBarIcon: ({ color }) => <Ionicons size={28} name="add-circle-outline" color={color} />,
         }}
       />
-       <Tabs.Screen
+      <Tabs.Screen
         name="Camera"
         options={{
-          title: 'Camera',
+          title: "Camera",
           tabBarIcon: ({ color }) => <Ionicons size={28} name="camera-outline" color={color} />,
         }}
       />
-        <Tabs.Screen
+      <Tabs.Screen
         name="Sell"
         options={{
-          title: 'sell',
-          tabBarIcon: ({ color }) => <Ionicons size={28} name="diamond-outline" color={color} />,
+          title: "Sell",
+          tabBarIcon: ({ color }) => <IndianRupee size={28} color={color} />,
         }}
       />
-       <Tabs.Screen
+      <Tabs.Screen
         name="Profile"
         options={{
-          title: 'Profile',
+          title: "Profile",
           tabBarIcon: ({ color }) => <Ionicons size={28} name="person-outline" color={color} />,
         }}
       />
-      
-    
     </Tabs>
   );
 }
