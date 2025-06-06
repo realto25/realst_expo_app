@@ -512,7 +512,7 @@ export type UpdateCameraType = {
 export const getCameras = async (clerkId: string): Promise<CameraType[]> => {
   try {
     const res = await api.get("/cameras", {
-      params: { clerkId }
+      params: { clerkId },
     });
     return res.data;
   } catch (error) {
@@ -533,10 +533,13 @@ export const getCameras = async (clerkId: string): Promise<CameraType[]> => {
   }
 };
 
-export const getCameraById = async (id: string, clerkId: string): Promise<CameraType | null> => {
+export const getCameraById = async (
+  id: string,
+  clerkId: string
+): Promise<CameraType | null> => {
   try {
     const res = await api.get(`/cameras/${id}`, {
-      params: { clerkId }
+      params: { clerkId },
     });
     return res.data;
   } catch (error) {
@@ -575,7 +578,7 @@ export const createOrUpdateCamera = async (
 
     const res = await api.post("/cameras", {
       ...data,
-      clerkId
+      clerkId,
     });
     return res.data;
   } catch (error) {
@@ -583,9 +586,7 @@ export const createOrUpdateCamera = async (
     if (axios.isAxiosError(error)) {
       switch (error.response?.status) {
         case 400:
-          throw new Error(
-            error.response.data?.error || "Invalid camera data"
-          );
+          throw new Error(error.response.data?.error || "Invalid camera data");
         case 401:
           throw new Error("Please sign in to manage cameras");
         case 403:
@@ -620,7 +621,7 @@ export const updateCamera = async (
 
     const res = await api.patch(`/cameras/${id}`, {
       ...data,
-      clerkId
+      clerkId,
     });
     return res.data;
   } catch (error) {
@@ -628,9 +629,7 @@ export const updateCamera = async (
     if (axios.isAxiosError(error)) {
       switch (error.response?.status) {
         case 400:
-          throw new Error(
-            error.response.data?.error || "Invalid camera data"
-          );
+          throw new Error(error.response.data?.error || "Invalid camera data");
         case 401:
           throw new Error("Please sign in to update cameras");
         case 403:
@@ -655,7 +654,7 @@ export const deleteCamera = async (
 ): Promise<void> => {
   try {
     await api.delete(`/cameras/${id}`, {
-      params: { clerkId }
+      params: { clerkId },
     });
   } catch (error) {
     console.error("Error deleting camera:", error);
