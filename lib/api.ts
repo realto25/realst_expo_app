@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // ✅ Base URL of your deployed Next.js backend
-const BASE_URL = "https://main-admin-dashboard-orpin.vercel.app";
+const BASE_URL = "https://main-admin-dashboard-orpin.vercel.app/api";
 
 // Axios instance
 const api = axios.create({
