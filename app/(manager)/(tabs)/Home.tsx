@@ -1,38 +1,37 @@
-import { useState, useEffect } from "react";
-import { 
-  StyleSheet, 
-  ScrollView, 
-  RefreshControl, 
-  TouchableOpacity,
-  View,
-  Dimensions,
-  StatusBar,
-  Platform
-} from "react-native";
-import { 
-  Card, 
-  Title, 
-  Text, 
-  DataTable, 
-  ActivityIndicator, 
-  Avatar, 
-  IconButton,
-  Surface
-} from "react-native-paper";
-import { 
-  LineChart, 
-  BarChart, 
-  PieChart 
-} from "react-native-chart-kit";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
-import { SignOutButton } from "@/components/SignOutButton";
-import { 
-  getProjects, 
-  getAllPlots, 
-  getVisitRequests, 
+import { useCallback, useEffect, useState } from "react";
+import { useUser } from "@clerk/clerk-expo";
+import {
+  Alert,
+  Dimensions,
+  Platform,
+  RefreshControl,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  TouchableOpacity,
+  View
+} from "react-native";
+import {
+  BarChart,
+  LineChart,
+  PieChart
+} from "react-native-chart-kit";
+import {
+  ActivityIndicator,
+  Avatar,
+  DataTable,
+  Surface,
+  Text
+} from "react-native-paper";
+import {
+  clerkId,
+  getAllPlots,
+  getProjects,
   getUserFeedback,
-  ProjectType, 
-  PlotType, 
+  getVisitRequests,
+  PlotType,
+  ProjectType,
   VisitRequest,
 } from "../../../lib/api";
 
@@ -51,10 +50,22 @@ const SHADOW_CONFIG = {
   elevation: 3,
 };
 
+interface DashboardStats {
+  projects: number;
+  plots: number;
+  availablePlots: number;
+  visitRequests: number;
+  pendingVisits: number;
+  avgRating: number;
+  recentSales: number;
+}
+
 export default function ManagerHomeTabScreen() {
+  const { user } = useUser();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [stats, setStats] = useState({
+  const [error, setError] = useState<string | null>(null);
+  const [stats, setStats] = useState<DashboardStats>({
     projects: 0,
     plots: 0,
     availablePlots: 0,
@@ -68,42 +79,88 @@ export default function ManagerHomeTabScreen() {
   const [visits, setVisits] = useState<VisitRequest[]>([]);
   const [feedback, setFeedback] = useState<any[]>([]);
 
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
-      const [projectsData, plotsData, visitsData, feedbackData] = await Promise.all([
+      setError(null);
+      
+      // Get the current user's clerkId
+      const currentClerkId = clerkId();
+      
+      if (!currentClerkId) {
+        throw new Error("User not authenticated");
+      }
+      
+      // Use Promise.allSettled to handle partial failures gracefully
+      const results = await Promise.allSettled([
         getProjects(),
         getAllPlots(),
         getVisitRequests(),
-        getUserFeedback("manager-clerk-id")
+        getUserFeedback(currentClerkId)
       ]);
 
-      // Calculate statistics with safe defaults
-      const availablePlots = plotsData?.filter(p => p.status === "AVAILABLE").length || 0;
-      const pendingVisits = visitsData?.filter(v => v.status === "PENDING").length || 0;
-      const avgRating = feedbackData?.length ? 
-        feedbackData.reduce((sum: number, f) => sum + (f.rating || 0), 0) / feedbackData.length : 0;
-      const recentSales = plotsData?.filter(p => 
-        p.status === "SOLD" && 
-        new Date(p.createdAt) > new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
-      ).length || 0;
+      // Extract successful results or use empty arrays as fallbacks
+      const projectsData = results[0].status === 'fulfilled' ? results[0].value : [];
+      const plotsData = results[1].status === 'fulfilled' ? results[1].value : [];
+      const visitsData = results[2].status === 'fulfilled' ? results[2].value : [];
+      const feedbackData = results[3].status === 'fulfilled' ? results[3].value : [];
+
+      // Log any failed requests
+      results.forEach((result, index) => {
+        if (result.status === 'rejected') {
+          const apiNames = ['Projects', 'Plots', 'Visits', 'Feedback'];
+          console.warn(`Failed to load ${apiNames[index]}:`, result.reason);
+        }
+      });
+
+      // Calculate statistics with safe null checks
+      const safeProjectsData = Array.isArray(projectsData) ? projectsData : [];
+      const safePlotsData = Array.isArray(plotsData) ? plotsData : [];
+      const safeVisitsData = Array.isArray(visitsData) ? visitsData : [];
+      const safeFeedbackData = Array.isArray(feedbackData) ? feedbackData : [];
+
+      const availablePlots = safePlotsData.filter(p => p?.status === "AVAILABLE").length;
+      const pendingVisits = safeVisitsData.filter(v => v?.status === "PENDING").length;
+      
+      // Calculate average rating with proper error handling
+      const avgRating = safeFeedbackData.length > 0 ? 
+        safeFeedbackData.reduce((sum: number, f) => {
+          const rating = typeof f?.rating === 'number' ? f.rating : 0;
+          return sum + rating;
+        }, 0) / safeFeedbackData.length : 0;
+
+      // Calculate recent sales (last 7 days)
+      const sevenDaysAgo = new Date();
+      sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+      
+      const recentSales = safePlotsData.filter(p => {
+        if (p?.status !== "SOLD" || !p?.createdAt) return false;
+        try {
+          return new Date(p.createdAt) > sevenDaysAgo;
+        } catch {
+          return false;
+        }
+      }).length;
 
       setStats({
-        projects: projectsData?.length || 0,
-        plots: plotsData?.length || 0,
+        projects: safeProjectsData.length,
+        plots: safePlotsData.length,
         availablePlots,
-        visitRequests: visitsData?.length || 0,
+        visitRequests: safeVisitsData.length,
         pendingVisits,
-        avgRating,
+        avgRating: Math.round(avgRating * 10) / 10, // Round to 1 decimal
         recentSales,
       });
 
-      setProjects(projectsData || []);
-      setPlots(plotsData || []);
-      setVisits(visitsData || []);
-      setFeedback(feedbackData || []);
+      setProjects(safeProjectsData);
+      setPlots(safePlotsData);
+      setVisits(safeVisitsData);
+      setFeedback(safeFeedbackData);
+
     } catch (error) {
-      console.error("Failed to load data:", error);
-      // Set empty states on error
+      console.error("Failed to load dashboard data:", error);
+      setError("Failed to load dashboard data. Please try again.");
+      
+      // Reset to empty states on complete failure
       setStats({
         projects: 0,
         plots: 0,
@@ -121,16 +178,34 @@ export default function ManagerHomeTabScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
   useEffect(() => {
     loadData();
-  }, []);
+  }, [loadData]);
 
-  const onRefresh = () => {
+  const onRefresh = useCallback(() => {
     setRefreshing(true);
     loadData();
-  };
+  }, [loadData]);
+
+  const showErrorAlert = useCallback(() => {
+    if (error) {
+      Alert.alert(
+        "Data Loading Error",
+        error,
+        [
+          { text: "Retry", onPress: loadData },
+          { text: "OK", style: "cancel" }
+        ]
+      );
+    }
+  }, [error, loadData]);
+
+  // Show error alert when error state changes
+  useEffect(() => {
+    showErrorAlert();
+  }, [showErrorAlert]);
 
   if (loading) {
     return (
@@ -141,64 +216,96 @@ export default function ManagerHomeTabScreen() {
     );
   }
 
-  // Safe chart data preparation with fallbacks
-  const priceDistribution = projects.length ? projects.map(project => {
-    const projectPlots = plots.filter(p => p.projectId === project.id);
-    const avgPrice = projectPlots.length ? 
-      projectPlots.reduce((sum, p) => sum + (p.price || 0), 0) / projectPlots.length : 0;
-    return {
-      name: project.name || 'Unnamed Project',
-      price: avgPrice,
-      color: `#${Math.floor(Math.random()*16777215).toString(16)}`,
-      legendFontColor: "#8E8E93",
-      legendFontSize: 12
-    };
-  }) : [{
-    name: 'No Data',
-    price: 0,
-    color: '#E5E5EA',
-    legendFontColor: "#8E8E93",
-    legendFontSize: 12
-  }];
-
-  const visitTrends = Array(7).fill(0).map((_, i) => {
-    const date = new Date();
-    date.setDate(date.getDate() - (6 - i));
-    return visits.filter(v => 
-      new Date(v.date).toDateString() === date.toDateString()
-    ).length;
-  });
-
-  const statusDistribution = [
-    {
-      name: "Available",
-      count: plots.filter(p => p.status === "AVAILABLE").length,
-      color: "#34C759",
-      legendFontColor: "#8E8E93",
-      legendFontSize: 12
-    },
-    {
-      name: "Reserved",
-      count: plots.filter(p => p.status === "RESERVED").length,
-      color: "#FF9500",
-      legendFontColor: "#8E8E93",
-      legendFontSize: 12
-    },
-    {
-      name: "Sold",
-      count: plots.filter(p => p.status === "SOLD").length,
-      color: "#FF3B30",
-      legendFontColor: "#8E8E93",
-      legendFontSize: 12
+  // Safe chart data preparation with better error handling
+  const createPriceDistribution = () => {
+    if (!projects.length || !plots.length) {
+      return [{
+        name: 'No Data',
+        price: 0,
+        color: '#E5E5EA',
+        legendFontColor: "#8E8E93",
+        legendFontSize: 12
+      }];
     }
-  ];
 
-  const topProjects = projects.length ? [...projects]
-    .sort((a, b) => 
-      plots.filter(p => p.projectId === b.id && p.status === "SOLD").length - 
-      plots.filter(p => p.projectId === a.id && p.status === "SOLD").length
-    )
-    .slice(0, 3) : [];
+    return projects.map(project => {
+      const projectPlots = plots.filter(p => p?.projectId === project?.id);
+      const avgPrice = projectPlots.length ? 
+        projectPlots.reduce((sum, p) => sum + (typeof p?.price === 'number' ? p.price : 0), 0) / projectPlots.length : 0;
+      
+      return {
+        name: project?.name || 'Unnamed Project',
+        price: Math.round(avgPrice),
+        color: `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`,
+        legendFontColor: "#8E8E93",
+        legendFontSize: 12
+      };
+    });
+  };
+
+  const createVisitTrends = () => {
+    const trends = Array(7).fill(0).map((_, i) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - i));
+      return visits.filter(v => {
+        try {
+          return v?.date && new Date(v.date).toDateString() === date.toDateString();
+        } catch {
+          return false;
+        }
+      }).length;
+    });
+    return trends;
+  };
+
+  const createStatusDistribution = () => {
+    const statusCounts = {
+      AVAILABLE: plots.filter(p => p?.status === "AVAILABLE").length,
+      RESERVED: plots.filter(p => p?.status === "RESERVED").length,
+      SOLD: plots.filter(p => p?.status === "SOLD").length
+    };
+
+    return [
+      {
+        name: "Available",
+        count: statusCounts.AVAILABLE,
+        color: "#34C759",
+        legendFontColor: "#8E8E93",
+        legendFontSize: 12
+      },
+      {
+        name: "Reserved",
+        count: statusCounts.RESERVED,
+        color: "#FF9500",
+        legendFontColor: "#8E8E93",
+        legendFontSize: 12
+      },
+      {
+        name: "Sold",
+        count: statusCounts.SOLD,
+        color: "#FF3B30",
+        legendFontColor: "#8E8E93",
+        legendFontSize: 12
+      }
+    ];
+  };
+
+  const getTopProjects = () => {
+    if (!projects.length || !plots.length) return [];
+    
+    return [...projects]
+      .map(project => ({
+        ...project,
+        soldCount: plots.filter(p => p?.projectId === project?.id && p?.status === "SOLD").length
+      }))
+      .sort((a, b) => b.soldCount - a.soldCount)
+      .slice(0, 3);
+  };
+
+  const priceDistribution = createPriceDistribution();
+  const visitTrends = createVisitTrends();
+  const statusDistribution = createStatusDistribution();
+  const topProjects = getTopProjects();
 
   const chartConfig = {
     backgroundColor: "#ffffff",
@@ -215,6 +322,43 @@ export default function ManagerHomeTabScreen() {
       strokeWidth: "2",
       stroke: "#007AFF"
     }
+  };
+
+  const getVisitStatusColor = (status: string) => {
+    switch (status) {
+      case "APPROVED": return "#34C759";
+      case "PENDING": return "#FF9500";
+      case "REJECTED": return "#FF453A";
+      case "COMPLETED": return "#32D74B";
+      default: return "#8E8E93";
+    }
+  };
+
+  const formatVisitDate = (dateString: string) => {
+    try {
+      return new Date(dateString).toLocaleDateString();
+    } catch {
+      return "Invalid Date";
+    }
+  };
+
+  const getUserInitials = (userData: any) => {
+    if (!userData?.name) return "V";
+    return userData.name.split(" ").map((n: string) => n[0]).join("").toUpperCase();
+  };
+
+  const getManagerInitials = () => {
+    if (!user?.firstName && !user?.lastName) return "M";
+    const firstName = user?.firstName || "";
+    const lastName = user?.lastName || "";
+    return `${firstName.charAt(0)}${lastName.charAt(0)}`.toUpperCase();
+  };
+
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 17) return "Good Afternoon";
+    return "Good Evening";
   };
 
   return (
@@ -237,18 +381,29 @@ export default function ManagerHomeTabScreen() {
         {/* Header */}
         <View style={styles.header}>
           <View style={styles.headerLeft}>
-            <Text style={styles.greeting}>Good Morning</Text>
+            <Text style={styles.greeting}>{getGreeting()}</Text>
             <Text style={styles.headerTitle}>Dashboard</Text>
           </View>
           <TouchableOpacity style={styles.profileButton}>
             <Avatar.Text 
               size={40} 
-              label="M" 
+              label={getManagerInitials()} 
               style={styles.avatar}
               labelStyle={styles.avatarLabel}
             />
           </TouchableOpacity>
         </View>
+
+        {/* Error Banner */}
+        {error && (
+          <Surface style={styles.errorBanner}>
+            <MaterialCommunityIcons name="alert-circle" size={20} color="#FF453A" />
+            <Text style={styles.errorText}>{error}</Text>
+            <TouchableOpacity onPress={loadData}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </Surface>
+        )}
 
         {/* Quick Stats Grid */}
         <View style={styles.statsGrid}>
@@ -350,7 +505,7 @@ export default function ManagerHomeTabScreen() {
           </Surface>
         )}
 
-        {priceDistribution.length > 1 && (
+        {priceDistribution.length > 1 && priceDistribution.some(p => p.price > 0) && (
           <Surface style={styles.chartCard}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Average Plot Prices</Text>
@@ -370,6 +525,7 @@ export default function ManagerHomeTabScreen() {
               width={screenWidth - 64}
               height={220}
               yAxisLabel="$"
+              yAxisSuffix=""
               chartConfig={chartConfig}
               style={styles.chart}
             />
@@ -393,14 +549,14 @@ export default function ManagerHomeTabScreen() {
                 <DataTable.Title numeric textStyle={styles.tableHeaderText}>Sold</DataTable.Title>
               </DataTable.Header>
 
-              {topProjects.map((project, index) => {
-                const projectPlots = plots.filter(p => p.projectId === project.id);
-                const soldPlots = projectPlots.filter(p => p.status === "SOLD").length;
+              {topProjects.map((project) => {
+                const projectPlots = plots.filter(p => p?.projectId === project?.id);
+                const soldPlots = projectPlots.filter(p => p?.status === "SOLD").length;
                 
                 return (
-                  <DataTable.Row key={project.id} style={styles.tableRow}>
+                  <DataTable.Row key={project?.id || Math.random()} style={styles.tableRow}>
                     <DataTable.Cell textStyle={styles.tableCellText}>
-                      {project.name}
+                      {project?.name || 'Unknown Project'}
                     </DataTable.Cell>
                     <DataTable.Cell numeric textStyle={styles.tableCellText}>
                       {projectPlots.length}
@@ -426,34 +582,31 @@ export default function ManagerHomeTabScreen() {
             </View>
             
             {visits.slice(0, 3).map((visit) => (
-              <TouchableOpacity key={visit.id} style={styles.visitItem}>
+              <TouchableOpacity key={visit?.id || Math.random()} style={styles.visitItem}>
                 <Avatar.Text 
                   size={44} 
-                  label={visit.user?.name?.split(" ").map(n => n[0]).join("") || "V"} 
+                  label={getUserInitials(visit?.user)} 
                   style={styles.visitAvatar}
                   labelStyle={styles.visitAvatarLabel}
                 />
                 <View style={styles.visitDetails}>
                   <Text style={styles.visitName}>
-                    {visit.user?.name || visit.name || 'Unknown Visitor'}
+                    {visit?.user?.name || visit?.name || 'Unknown Visitor'}
                   </Text>
                   <Text style={styles.visitPlot}>
-                    {visit.plot?.title || 'Unknown Plot'}
+                    {visit?.plot?.title || 'Unknown Plot'}
                   </Text>
                   <Text style={styles.visitDate}>
-                    {new Date(visit.date).toLocaleDateString()} at {visit.time}
+                    {formatVisitDate(visit?.date)} at {visit?.time || 'Unknown time'}
                   </Text>
                 </View>
                 <View style={[
                   styles.visitStatus,
-                  { 
-                    backgroundColor: 
-                      visit.status === "APPROVED" ? "#34C759" :
-                      visit.status === "PENDING" ? "#FF9500" :
-                      visit.status === "REJECTED" ? "#FF453A" : "#8E8E93"
-                  }
+                  { backgroundColor: getVisitStatusColor(visit?.status) }
                 ]}>
-                  <Text style={styles.visitStatusText}>{visit.status}</Text>
+                  <Text style={styles.visitStatusText}>
+                    {visit?.status || 'UNKNOWN'}
+                  </Text>
                 </View>
               </TouchableOpacity>
             ))}
@@ -461,13 +614,16 @@ export default function ManagerHomeTabScreen() {
         )}
 
         {/* Empty State */}
-        {projects.length === 0 && plots.length === 0 && visits.length === 0 && (
+        {projects.length === 0 && plots.length === 0 && visits.length === 0 && !loading && (
           <Surface style={styles.emptyStateCard}>
             <MaterialCommunityIcons name="chart-line" size={64} color="#C7C7CC" />
             <Text style={styles.emptyStateTitle}>No Data Available</Text>
             <Text style={styles.emptyStateSubtitle}>
               Pull down to refresh and load your dashboard data
             </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={loadData}>
+              <Text style={styles.retryButtonText}>Retry Loading</Text>
+            </TouchableOpacity>
           </Surface>
         )}
 
@@ -532,6 +688,28 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
     color: "#FFFFFF",
+  },
+  errorBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginHorizontal: 20,
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: 8,
+    backgroundColor: "#FFEBEE",
+    borderLeftWidth: 4,
+    borderLeftColor: "#FF453A",
+  },
+  errorText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 14,
+    color: "#FF453A",
+  },
+  retryText: {
+    fontSize: 14,
+    color: "#007AFF",
+    fontWeight: "500",
   },
   statsGrid: {
     flexDirection: "row",
@@ -703,6 +881,17 @@ const styles = StyleSheet.create({
     color: "#8E8E93",
     textAlign: "center",
     lineHeight: 22,
+    marginBottom: 20,
+  },
+  retryButton: {
+    backgroundColor: "#007AFF",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  retryButtonText: {
+    fontSize: 16,
+    fontWeight: "600",
   },
   bottomPadding: {
     height: 40,

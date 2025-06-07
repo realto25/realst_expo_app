@@ -1,7 +1,7 @@
 import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import { useFonts } from "expo-font";
-import { Stack, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -29,7 +29,10 @@ export default function RootLayout() {
   }
 
   return (
-    <ClerkProvider tokenCache={tokenCache}>
+    <ClerkProvider 
+      tokenCache={tokenCache}
+      publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY}
+    >
       <MainRouter />
       <StatusBar style="auto" />
     </ClerkProvider>
@@ -38,32 +41,29 @@ export default function RootLayout() {
 
 function MainRouter() {
   const { isLoaded, isSignedIn } = useAuth();
-  const { user } = useUser();
-  const router = useRouter();
+  const { user, isLoaded: isUserLoaded } = useUser();
+
+  // Let individual screens handle their own navigation logic
+  // Remove automatic redirection from root layout to prevent conflicts
+  // The index.tsx and AuthLayout will handle proper redirection
 
   useEffect(() => {
-    if (!isLoaded || !user) return;
-
-    const role = user.publicMetadata?.role;
-
-    switch (role) {
-      case "GUEST":
-        router.replace("/(guest)/(tabs)/Home");
-        break;
-      case "manager":
-        router.replace("/(manager)/(tabs)/Home");
-        break;
-      default:
-        router.replace("/(manager)/(tabs)/Home");
-        break;
+    // Only log the current state for debugging
+    if (isLoaded && isUserLoaded) {
+      console.log('Auth State:', {
+        isSignedIn,
+        userId: user?.id,
+        role: user?.publicMetadata?.role
+      });
     }
-  }, [isLoaded, user, router]);
+  }, [isLoaded, isUserLoaded, isSignedIn, user]);
 
   return (
     <Stack
       screenOptions={{
         headerShown: false, // Disable stack header globally
         gestureEnabled: false, // Prevent gesture-based navigation from showing headers
+        animation: 'none', // Disable animations to prevent navigation flicker
       }}
     >
       <Stack.Screen name="index" options={{ headerShown: false }} />
