@@ -66,7 +66,7 @@ export default function ClientHomeScreen() {
           <Animatable.View animation={fadeIn} duration={1800}>
             <TouchableOpacity
               style={tw`bg-orange-600 rounded-xl p-4 mt-4 flex-row items-center justify-center shadow-md active:bg-orange-700`}
-              onPress={() => router.push("/(tabs)/Home")}
+              onPress={() => router.push("/(client)/(tabs)/Home")}
             >
               <Ionicons name="search-outline" size={22} color="white" />
               <Text style={tw`text-white font-semibold text-base ml-3`}>Explore More</Text>

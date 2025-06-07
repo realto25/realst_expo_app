@@ -1,15 +1,16 @@
 {
   "expo": {
-    "name": "realest_project",
-    "slug": "realest_project",
+    "name": "90 Degree Pride Homes",
+    "slug": "90 Degree",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/images/icon.png",
+    "icon": "./assets/Icon/android/playstore-icon.png",
     "scheme": "realestproject",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
+
     },
     "android": {
       "adaptiveIcon": {
@@ -28,7 +29,7 @@
       [
         "expo-splash-screen",
         {
-          "image": "./assets/images/splash-icon.png",
+          "image": "./assets/Icon/android/playstore-icon.png",
           "imageWidth": 500,
           "resizeMode": "contain",
           "backgroundColor": "#ffffff"

@@ -7,7 +7,7 @@ const Home = () => {
   const { isSignedIn } = useAuth();
 
   if (isSignedIn) {
-    return <Redirect href="/(client)/(tabs)/Home" />;
+    return <Redirect href="/(manager)/(tabs)/Home" />;
   }
 
   return <Redirect href="/(auth)/welcome" />;

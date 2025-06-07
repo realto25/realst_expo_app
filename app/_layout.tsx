@@ -1,9 +1,7 @@
-// app/_layout.tsx
 import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
-import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import { Stack, Tabs, useRouter } from "expo-router";
+import { Stack, useRouter } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -21,10 +19,14 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
-  }, [loaded]);
+    if (loaded || error) {
+      SplashScreen.hideAsync();
+    }
+  }, [loaded, error]);
 
-  if (!loaded) return null;
+  if (!loaded && !error) {
+    return null;
+  }
 
   return (
     <ClerkProvider tokenCache={tokenCache}>
@@ -35,75 +37,41 @@ export default function RootLayout() {
 }
 
 function MainRouter() {
-  const { isSignedIn } = useAuth();
-  const { user, isLoaded } = useUser();
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user } = useUser();
   const router = useRouter();
+
   useEffect(() => {
-    if (isLoaded && user) {
-      const role = user.publicMetadata?.role;
+    if (!isLoaded || !user) return;
 
-      switch (role) {
-        case "GUEST":
-          router.replace("/(guest)/(tabs)/Home");
-          break;
-        case "manager":
-          router.replace("/(manager)");
-          break;
-        default:
-          router.replace("/(client)/(tabs)/Home");
-          break;
-      }
+    const role = user.publicMetadata?.role;
+
+    switch (role) {
+      case "GUEST":
+        router.replace("/(guest)/(tabs)/Home");
+        break;
+      case "manager":
+        router.replace("/(manager)/(tabs)/Home");
+        break;
+      default:
+        router.replace("/(manager)/(tabs)/Home");
+        break;
     }
-  }, [isLoaded, user]);
+  }, [isLoaded, user, router]);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(guest)" />
-      <Stack.Screen name="(client)" />
-      <Stack.Screen name="(manager)" />
-      <Stack.Screen name="+not-found" />
-    </Stack>
-  );
-}
-
-export function TabLayout() {
-  return (
-    <Tabs
+    <Stack
       screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: "#0066cc",
-        tabBarInactiveTintColor: "#666",
+        headerShown: false, // Disable stack header globally
+        gestureEnabled: false, // Prevent gesture-based navigation from showing headers
       }}
     >
-      <Tabs.Screen
-        name="Home"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => (
-            <Ionicons size={28} name="home-outline" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="Attendance"
-        options={{
-          title: "Attendance",
-          tabBarIcon: ({ color }) => (
-            <Ionicons size={28} name="add-circle-outline" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="Assign"
-        options={{
-          title: "Visit Requests",
-          tabBarIcon: ({ color }) => (
-            <Ionicons size={28} name="list-outline" color={color} />
-          ),
-        }}
-      />
-    </Tabs>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(guest)" options={{ headerShown: false }} />
+      <Stack.Screen name="(client)" options={{ headerShown: false }} />
+      <Stack.Screen name="(manager)" options={{ headerShown: false }} />
+      <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+    </Stack>
   );
 }
