@@ -3,17 +3,17 @@ import axios from "axios";
 import { format } from "date-fns";
 import React, { useEffect, useState } from "react";
 import {
-  ActivityIndicator,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
+    ActivityIndicator,
+    ScrollView,
+    StyleSheet,
+    Text,
+    View,
 } from "react-native";
 import { Button, Card, Paragraph, TextInput, Title } from "react-native-paper";
 import QRCode from "react-native-qrcode-svg";
 
 // Configure axios base URL
-axios.defaults.baseURL = "http://172.31.99.212:3000";
+axios.defaults.baseURL = "https://main-admin-dashboard-orpin.vercel.app";
 
 interface VisitRequest {
   id: string;

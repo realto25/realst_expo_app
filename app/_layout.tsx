@@ -1,9 +1,7 @@
-// app/_layout.tsx
 import { ClerkProvider, useAuth, useUser } from "@clerk/clerk-expo";
 import { tokenCache } from "@clerk/clerk-expo/token-cache";
-import { Ionicons } from "@expo/vector-icons";
 import { useFonts } from "expo-font";
-import { Stack, Tabs, useRouter } from "expo-router";
+import { Stack } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
 import { StatusBar } from "expo-status-bar";
 import { useEffect } from "react";
@@ -21,13 +19,20 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    if (loaded) SplashScreen.hideAsync();
-  }, [loaded]);
+    if (loaded || error) {
+      SplashScreen.hideAsync();
+    }
+  }, [loaded, error]);
 
-  if (!loaded) return null;
+  if (!loaded && !error) {
+    return null;
+  }
 
   return (
-    <ClerkProvider tokenCache={tokenCache}>
+    <ClerkProvider 
+      tokenCache={tokenCache}
+      publishableKey={process.env.EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY}
+    >
       <MainRouter />
       <StatusBar style="auto" />
     </ClerkProvider>
@@ -35,75 +40,38 @@ export default function RootLayout() {
 }
 
 function MainRouter() {
-  const { isSignedIn } = useAuth();
-  const { user, isLoaded } = useUser();
-  const router = useRouter();
+  const { isLoaded, isSignedIn } = useAuth();
+  const { user, isLoaded: isUserLoaded } = useUser();
+
+  // Let individual screens handle their own navigation logic
+  // Remove automatic redirection from root layout to prevent conflicts
+  // The index.tsx and AuthLayout will handle proper redirection
+
   useEffect(() => {
-    if (isLoaded && user) {
-      const role = user.publicMetadata?.role;
-
-      switch (role) {
-        case "GUEST":
-          router.replace("/(guest)/(tabs)/Home");
-          break;
-        case "manager":
-          router.replace("/(manager)");
-          break;
-        default:
-          router.replace("/(client)/(tabs)/Home");
-          break;
-      }
+    // Only log the current state for debugging
+    if (isLoaded && isUserLoaded) {
+      console.log('Auth State:', {
+        isSignedIn,
+        userId: user?.id,
+        role: user?.publicMetadata?.role
+      });
     }
-  }, [isLoaded, user]);
+  }, [isLoaded, isUserLoaded, isSignedIn, user]);
 
   return (
-    <Stack screenOptions={{ headerShown: false }}>
-      <Stack.Screen name="index" />
-      <Stack.Screen name="(auth)" />
-      <Stack.Screen name="(guest)" />
-      <Stack.Screen name="(client)" />
-      <Stack.Screen name="(manager)" />
-      <Stack.Screen name="+not-found" />
-    </Stack>
-  );
-}
-
-export function TabLayout() {
-  return (
-    <Tabs
+    <Stack
       screenOptions={{
-        headerShown: false,
-        tabBarActiveTintColor: "#0066cc",
-        tabBarInactiveTintColor: "#666",
+        headerShown: false, // Disable stack header globally
+        gestureEnabled: false, // Prevent gesture-based navigation from showing headers
+        animation: 'none', // Disable animations to prevent navigation flicker
       }}
     >
-      <Tabs.Screen
-        name="Home"
-        options={{
-          title: "Home",
-          tabBarIcon: ({ color }) => (
-            <Ionicons size={28} name="home-outline" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="Attendance"
-        options={{
-          title: "Attendance",
-          tabBarIcon: ({ color }) => (
-            <Ionicons size={28} name="add-circle-outline" color={color} />
-          ),
-        }}
-      />
-      <Tabs.Screen
-        name="Assign"
-        options={{
-          title: "Visit Requests",
-          tabBarIcon: ({ color }) => (
-            <Ionicons size={28} name="list-outline" color={color} />
-          ),
-        }}
-      />
-    </Tabs>
+      <Stack.Screen name="index" options={{ headerShown: false }} />
+      <Stack.Screen name="(auth)" options={{ headerShown: false }} />
+      <Stack.Screen name="(guest)" options={{ headerShown: false }} />
+      <Stack.Screen name="(client)" options={{ headerShown: false }} />
+      <Stack.Screen name="(manager)" options={{ headerShown: false }} />
+      <Stack.Screen name="+not-found" options={{ headerShown: false }} />
+    </Stack>
   );
 }

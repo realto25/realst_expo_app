@@ -1,7 +1,7 @@
 import axios from "axios";
 
 // ✅ Base URL of your deployed Next.js backend
-const BASE_URL = "https://main-admin-dashboard-orpin.vercel.app/api";
+const BASE_URL = "https://main-admin-dashboard-orpin.vercel.app";
 
 // Axios instance
 const api = axios.create({
@@ -275,19 +275,23 @@ export const getVisitRequests = async (
     if (axios.isAxiosError(error)) {
       switch (error.response?.status) {
         case 401:
-          throw new Error("Please sign in to view your bookings");
+          // Optionally, throw specific error for UI to handle if needed
+          // throw new Error("Please sign in to view your bookings");
+          console.error("Unauthorized access for visit requests.");
+          break; // Fall through to return empty array
         case 404:
-          throw new Error("No bookings found");
+          console.error("No bookings found for visit requests (404).");
+          break; // Fall through to return empty array
         case 500:
-          throw new Error("Failed to load bookings. Please try again later");
+          console.error("Server error for visit requests (500).");
+          break; // Fall through to return empty array
         default:
-          throw new Error(
-            error.response?.data?.error || "Failed to load bookings"
-          );
+          console.error(error.response?.data?.error || "Failed to load bookings");
+          break; // Fall through to return empty array
       }
     }
-
-    throw new Error("Failed to load bookings");
+    // Always return an empty array on error to prevent .filter is not a function
+    return [];
   }
 };
 // Updated FeedbackType and submitFeedback function for your API client
