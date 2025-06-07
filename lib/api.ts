@@ -158,130 +158,57 @@ export type PlotType = {
   createdAt: string;
 };
 
-export type VisitRequestType = {
-  name: string;
-  email: string;
-  phone: string;
-  date: string;
-  time: string;
-  plotId: string;
-  clerkId?: string;
-};
+// Types for visit requests
+export type VisitRequestStatus = "PENDING" | "ASSIGNED" | "APPROVED" | "REJECTED";
 
-export type VisitRequest = {
-  id: string;
+export interface VisitRequestType {
+  id?: string;
+  status: VisitRequestStatus;
+  date: string;
+  time: string;
   name: string;
   email: string;
   phone: string;
-  date: string;
-  time: string;
-  status: "PENDING" | "APPROVED" | "REJECTED" | "COMPLETED";
-  qrCode: string | null;
-  expiresAt: string | null;
-  plot: {
+  plotId: string;
+  userId?: string;
+  qrCode?: string | null;
+  expiresAt?: string | null;
+  title?: string;
+  projectName?: string;
+  plotNumber?: string;
+  createdAt?: string;
+  updatedAt?: string;
+  plot?: {
     id: string;
     title: string;
     location: string;
-    project: {
+    projectId: string;
+    project?: {
       id: string;
       name: string;
     };
   };
-  user: {
+  user?: {
     id: string;
     name: string;
     email: string;
-    role: "GUEST" | "CLIENT" | "MANAGER";
-  } | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-// Add new type for webhook user data
-export type WebhookUserData = {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  emailAddresses: {
-    emailAddress: string;
-    verification: {
-      status: string;
-    };
-  }[];
-  phoneNumbers: {
-    phoneNumber: string;
-    verification: {
-      status: string;
-    };
-  }[];
-  imageUrl: string;
-  createdAt: number;
-  updatedAt: number;
-  lastSignInAt: number;
-  publicMetadata: {
-    role?: "GUEST" | "CLIENT" | "MANAGER";
-    // Add any other metadata you store
+    role: string;
+    clerkId: string;
   };
-};
+  assignedManager?: {
+    id: string;
+    name: string;
+    email: string;
+    phone: string;
+    clerkId: string;
+  } | null;
+  rejectionReason?: string | null;
+}
 
-// Create or update user
-export const createOrUpdateUser = async (user: UserType) => {
+// Visit Request API functions
+export const submitVisitRequest = async (data: Omit<VisitRequestType, "status" | "id">): Promise<VisitRequestType> => {
   try {
-    const res = await api.post("/users", user);
-    return res.data;
-  } catch (error) {
-    console.error("Failed to create/update user:", error);
-    throw new Error("User sync failed");
-  }
-};
-
-export const getProjects = async (): Promise<ProjectType[]> => {
-  try {
-    const res = await api.get(API_CONFIG.ENDPOINTS.PROJECTS.LIST);
-    return res.data;
-  } catch (error) {
-    console.error("Error fetching projects:", error);
-    return [];
-  }
-};
-
-export const getPlotsByProjectId = async (
-  projectId: string
-): Promise<PlotType[]> => {
-  try {
-    const res = await api.get(API_CONFIG.ENDPOINTS.PLOTS.BY_PROJECT(projectId));
-    return res.data;
-  } catch (error) {
-    console.error("Error fetching plots:", error);
-    return [];
-  }
-};
-
-export const getAllPlots = async (): Promise<PlotType[]> => {
-  try {
-    const projects = await getProjects();
-    const plotPromises = projects.map((p) => getPlotsByProjectId(p.id));
-    const allPlots = await Promise.all(plotPromises);
-    return allPlots.flat();
-  } catch (error) {
-    console.error("Error fetching all plots:", error);
-    return [];
-  }
-};
-
-export const getPlotById = async (id: string): Promise<PlotType | null> => {
-  try {
-    const res = await api.get(`/plots/${id}`);
-    return res.data;
-  } catch (error) {
-    console.error("Error fetching plot:", error);
-    return null;
-  }
-};
-
-export const submitVisitRequest = async (data: VisitRequestType) => {
-  try {
-    // Validate data
+    // Validate required fields
     if (!data.name?.trim()) throw new Error("Name is required");
     if (!data.email?.trim()) throw new Error("Email is required");
     if (!data.phone?.trim()) throw new Error("Phone number is required");
@@ -289,70 +216,91 @@ export const submitVisitRequest = async (data: VisitRequestType) => {
     if (!data.time?.trim()) throw new Error("Time is required");
     if (!data.plotId?.trim()) throw new Error("Plot ID is required");
 
-    const requestData = {
+    const res = await api.post(API_CONFIG.ENDPOINTS.BOOKINGS.CREATE, {
       data: {
         ...data,
         status: "PENDING",
       },
-      action: "create",
-    };
-
-    const res = await api.post(
-      API_CONFIG.ENDPOINTS.BOOKINGS.CREATE,
-      requestData
-    );
+    });
     return res.data;
   } catch (error) {
-    // Error is already handled by the interceptor
+    console.error("Error submitting visit request:", error);
     throw error;
   }
 };
 
-// Get visit requests for a specific user
-export const getVisitRequests = async (
-  clerkId?: string
-): Promise<VisitRequest[]> => {
+export const getVisitRequests = async (params?: { 
+  clerkId?: string;
+  userId?: string;
+  getManagers?: boolean;
+  role?: string;
+}): Promise<VisitRequestType[]> => {
   try {
-    const params = new URLSearchParams();
-    if (clerkId) {
-      params.append("clerkId", clerkId);
-    }
+    const searchParams = new URLSearchParams();
+    if (params?.clerkId) searchParams.append("clerkId", params.clerkId);
+    if (params?.userId) searchParams.append("userId", params.userId);
+    if (params?.getManagers) searchParams.append("getManagers", "true");
+    if (params?.role) searchParams.append("role", params.role);
 
-    const url = params.toString()
-      ? `/visit-requests?${params.toString()}`
-      : "/visit-requests";
-    console.log("Fetching visit requests from:", url);
-
-    const res = await api.get(url);
-    console.log("Visit requests response:", res.data);
+    const res = await api.get(`${API_CONFIG.ENDPOINTS.BOOKINGS.LIST}?${searchParams.toString()}`);
     return res.data;
   } catch (error) {
     console.error("Error fetching visit requests:", error);
-
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
-        case 401:
-          // Optionally, throw specific error for UI to handle if needed
-          // throw new Error("Please sign in to view your bookings");
-          console.error("Unauthorized access for visit requests.");
-          break; // Fall through to return empty array
-        case 404:
-          console.error("No bookings found for visit requests (404).");
-          break; // Fall through to return empty array
-        case 500:
-          console.error("Server error for visit requests (500).");
-          break; // Fall through to return empty array
-        default:
-          console.error(
-            error.response?.data?.error || "Failed to load bookings"
-          );
-          break; // Fall through to return empty array
-      }
-    }
-    // Always return an empty array on error to prevent .filter is not a function
-    return [];
+    throw error;
   }
 };
+
+export const acceptVisitRequest = async (
+  requestId: string,
+  data: {
+    clerkId: string;
+    plotId: string;
+    visitorName: string;
+    visitDate: string;
+    visitTime: string;
+  }
+): Promise<VisitRequestType> => {
+  try {
+    const res = await api.post(`${API_CONFIG.ENDPOINTS.BOOKINGS.DETAILS(requestId)}/accept`, data);
+    return res.data;
+  } catch (error) {
+    console.error("Error accepting visit request:", error);
+    throw error;
+  }
+};
+
+export const rejectVisitRequest = async (
+  requestId: string,
+  data: {
+    clerkId: string;
+    reason: string;
+  }
+): Promise<VisitRequestType> => {
+  try {
+    const res = await api.post(`${API_CONFIG.ENDPOINTS.BOOKINGS.DETAILS(requestId)}/reject`, data);
+    return res.data;
+  } catch (error) {
+    console.error("Error rejecting visit request:", error);
+    throw error;
+  }
+};
+
+export const assignManagerToVisitRequest = async (
+  requestId: string,
+  managerClerkId: string
+): Promise<VisitRequestType> => {
+  try {
+    const res = await api.patch(API_CONFIG.ENDPOINTS.BOOKINGS.DETAILS(requestId), {
+      id: requestId,
+      managerClerkId,
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error assigning manager:", error);
+    throw error;
+  }
+};
+
 // Updated FeedbackType and submitFeedback function for your API client
 
 export type FeedbackType = {
