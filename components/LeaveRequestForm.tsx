@@ -7,7 +7,6 @@ import {
   StyleSheet,
   Animated,
   Dimensions,
-  // Add Text and TouchableOpacity here
   Text,
   TouchableOpacity,
 } from "react-native";
@@ -15,7 +14,6 @@ import { Button, Card, HelperText, TextInput, Title } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
 import { Ionicons } from "@expo/vector-icons";
 
-// Configure axios base URL
 axios.defaults.baseURL = "https://main-admin-dashboard-orpin.vercel.app";
 
 const { width } = Dimensions.get("window");
@@ -42,7 +40,7 @@ export function LeaveRequestForm() {
       setLoading(false);
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 600,
         useNativeDriver: true,
       }).start();
       return;
@@ -53,7 +51,7 @@ export function LeaveRequestForm() {
       setLoading(false);
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 600,
         useNativeDriver: true,
       }).start();
       return;
@@ -86,7 +84,7 @@ export function LeaveRequestForm() {
       setReason("");
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 600,
         useNativeDriver: true,
       }).start(() => {
         setTimeout(() => setSuccess(null), 2000);
@@ -96,7 +94,7 @@ export function LeaveRequestForm() {
       setError(error.message || "Failed to submit leave request.");
       Animated.timing(fadeAnim, {
         toValue: 1,
-        duration: 500,
+        duration: 600,
         useNativeDriver: true,
       }).start();
     } finally {
@@ -106,7 +104,7 @@ export function LeaveRequestForm() {
 
   return (
     <ScrollView style={styles.container}>
-      <LinearGradient colors={["#f97316", "#ea580c"]} style={styles.header}>
+      <LinearGradient colors={["#ffedd5", "#fed7aa"]} style={styles.header}>
         <Title style={styles.title}>Submit Leave Request</Title>
       </LinearGradient>
       <Card style={styles.card}>
@@ -124,7 +122,7 @@ export function LeaveRequestForm() {
           )}
           {success && (
             <Animated.View
-              style={[styles.alert, { opacity: fadeAnim, backgroundColor: "#10b981" }]}
+              style={[styles.alert, { opacity: fadeAnim, backgroundColor: "#22c55e" }]}
             >
               <Ionicons
                 name="checkmark-circle-outline"
@@ -151,7 +149,7 @@ export function LeaveRequestForm() {
               display="default"
               onChange={(event, selectedDate) => {
                 setShowStartDatePicker(false);
-                selectedDate && setStartDate(selectedDate); // Corrected this line as well
+                selectedDate && setStartDate(selectedDate);
               }}
             />
           )}
@@ -171,7 +169,7 @@ export function LeaveRequestForm() {
               display="default"
               onChange={(event, selectedDate) => {
                 setShowEndDatePicker(false);
-                if (selectedDate) setEndDate(selectedDate);
+                selectedDate && setEndDate(selectedDate);
               }}
             />
           )}
@@ -189,7 +187,7 @@ export function LeaveRequestForm() {
             mode="outlined"
             placeholder="Enter your reason for leave"
             placeholderTextColor="#9ca3af"
-            theme={{ colors: { primary: "#f97316", background: "rgba(255, 255, 255, 0.9)" } }}
+            theme={{ colors: { primary: "#f97316", background: "#fff" } }}
           />
           <HelperText type="error" visible={!!error && !reason.trim()}>
             Reason is required.
@@ -198,11 +196,11 @@ export function LeaveRequestForm() {
           <TouchableOpacity
             onPress={handleSubmit}
             disabled={loading}
-            style={[styles.submitButton, { opacity: loading ? 0.6 : 1 }]}
+            style={[styles.submitButton, { opacity: loading ? 0.7 : 1 }]}
           >
-            <LinearGradient colors={["#10b981", "#059669"]} style={styles.buttonGradient}>
+            <LinearGradient colors={["#f97316", "#ea580c"]} style={styles.buttonGradient}>
               <Ionicons name="send-outline" size={20} color="#fff" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>Submit Leave Request</Text>
+              <Text style={styles.buttonText}>Submit Request</Text>
             </LinearGradient>
           </TouchableOpacity>
         </Card.Content>
@@ -214,62 +212,65 @@ export function LeaveRequestForm() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#fff",
   },
   header: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
   },
   title: {
     fontSize: 24,
-    fontWeight: "bold",
-    color: "#fff",
+    fontWeight: "700",
+    fontFamily: "Manrope-Bold",
+    color: "#1e293b",
     textAlign: "center",
   },
   card: {
-    marginBottom: 16,
-    elevation: 2,
-    borderRadius: 12,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    marginBottom: 20,
+    borderRadius: 16,
+    backgroundColor: "#fff",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 12,
+    elevation: 5,
   },
   label: {
-    fontSize: 14,
-    fontWeight: "bold",
-    color: "#333",
+    fontSize: 16,
+    fontWeight: "600",
+    fontFamily: "Manrope-SemiBold",
+    color: "#1e293b",
     marginBottom: 8,
     marginTop: 16,
   },
   dateButton: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
-    borderRadius: 8,
-    padding: 12,
+    backgroundColor: "#f8fafc",
+    borderRadius: 12,
+    padding: 14,
     marginBottom: 16,
     borderWidth: 1,
-    borderColor: "#f97316",
+    borderColor: "#e5e7eb",
   },
   dateIcon: {
-    marginRight: 8,
+    marginRight: 10,
   },
   dateText: {
     fontSize: 16,
-    color: "#1f2937",
+    fontFamily: "Manrope-Regular",
+    color: "#1e293b",
   },
   reasonInput: {
-    marginBottom: 8,
-    backgroundColor: "rgba(255, 255, 255, 0.9)",
+    marginBottom: 12,
+    backgroundColor: "#fff",
+    fontFamily: "Manrope-Regular",
   },
   submitButton: {
     borderRadius: 25,
     overflow: "hidden",
-    marginTop: 16,
+    marginTop: 20,
   },
   buttonGradient: {
     flexDirection: "row",
@@ -283,14 +284,15 @@ const styles = StyleSheet.create({
   buttonText: {
     color: "#fff",
     fontSize: 18,
-    fontWeight: "bold",
+    fontWeight: "700",
+    fontFamily: "Manrope-Bold",
   },
   alert: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#ef4444",
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 16,
   },
   alertIcon: {
@@ -299,6 +301,7 @@ const styles = StyleSheet.create({
   alertText: {
     color: "#fff",
     fontSize: 14,
+    fontFamily: "Manrope-Regular",
     flex: 1,
   },
 });

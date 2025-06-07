@@ -11,14 +11,14 @@ export default function Leave() {
   useEffect(() => {
     Animated.timing(fadeAnim, {
       toValue: 1,
-      duration: 500,
+      duration: 600,
       useNativeDriver: true,
     }).start();
   }, []);
 
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <LinearGradient colors={['#f97316', '#ea580c']} style={styles.header}>
+    <SafeAreaView style={styles.safeArea} edges={['left', 'right']}>
+      <LinearGradient colors={['#ffedd5', '#fed7aa']} style={styles.header}>
         <Text style={styles.title}>Leave Management</Text>
       </LinearGradient>
       <ScrollView 
@@ -26,7 +26,7 @@ export default function Leave() {
         contentContainerStyle={styles.contentContainer}
       >
         <Animated.View style={[styles.section, { opacity: fadeAnim }]}>
-          <Text style={styles.sectionTitle}>Request Leave</Text>
+          <Text style={styles.sectionTitle}>Request a Leave</Text>
           <LeaveRequestForm />
         </Animated.View>
 
@@ -42,41 +42,46 @@ export default function Leave() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f5f5f5',
+    backgroundColor: '#fff',
   },
   header: {
-    padding: 20,
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 16,
+    borderBottomRightRadius: 16,
+    elevation: 4,
   },
   container: {
     flex: 1,
   },
   contentContainer: {
-    paddingHorizontal: 16,
-    paddingBottom: 24,
+    paddingHorizontal: 20,
+    paddingVertical: 16,
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
+    fontWeight: '700',
+    fontFamily: 'Manrope-Bold',
+    color: '#1e293b',
     textAlign: 'center',
+    letterSpacing: 0.5,
   },
   section: {
-    marginBottom: 32,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    marginBottom: 20,
+    backgroundColor: '#fff',
     borderRadius: 12,
     padding: 20,
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.08,
+    shadowRadius: 10,
+    elevation: 4,
   },
   sectionTitle: {
     fontSize: 18,
     fontWeight: '600',
-    color: '#f97316',
-    marginBottom: 16,
+    fontFamily: 'Manrope-SemiBold',
+    color: '#1e293b',
+    marginBottom: 12,
   },
 });

@@ -3,10 +3,10 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
-    "start": "expo start",
+    "start": "expo start --clear",
     "reset-project": "node ./scripts/reset-project.js",
-    "android": "expo run:android",
-    "ios": "expo run:ios",
+    "android": "expo start --android --clear",
+    "ios": "expo start --ios --clear",
     "web": "expo start --web",
     "lint": "expo lint"
   },
@@ -15,17 +15,11 @@
     "@clerk/clerk-mcp": "^0.0.13",
     "@clerk/clerk-react": "^5.31.8",
     "@edvnz/refresh-control": "^1.0.2",
-    "@emotion/react": "^11.14.0",
-    "@emotion/styled": "^11.14.0",
     "@expo/metro-runtime": "~5.0.4",
     "@expo/vector-icons": "^14.1.0",
     "@fortawesome/fontawesome-svg-core": "^6.7.2",
     "@fortawesome/free-solid-svg-icons": "^6.7.2",
     "@fortawesome/react-native-fontawesome": "^0.3.2",
-    "@mui/icons-material": "^7.1.1",
-    "@mui/material": "^7.1.1",
-    "@mui/styled-engine-sc": "^7.1.1",
-    "@prisma/client": "^6.8.2",
     "@react-native-async-storage/async-storage": "^2.1.2",
     "@react-native-community/datetimepicker": "8.3.0",
     "@react-native-community/netinfo": "^11.4.1",
@@ -33,6 +27,7 @@
     "@react-navigation/bottom-tabs": "^7.3.10",
     "@react-navigation/elements": "^2.3.8",
     "@react-navigation/native": "^7.1.6",
+    "@shopify/react-native-skia": "^2.0.3",
     "ajv": "^8.17.1",
     "axios": "^1.9.0",
     "date-fns": "^4.1.0",
@@ -54,6 +49,7 @@
     "expo-screen-orientation": "^8.1.7",
     "expo-secure-store": "^14.2.3",
     "expo-splash-screen": "~0.30.9",
+    "expo-sqlite": "~15.2.11",
     "expo-status-bar": "~2.2.3",
     "expo-symbols": "~0.4.5",
     "expo-system-ui": "~5.0.8",
@@ -67,8 +63,6 @@
     "react-dom": "19.0.0",
     "react-native": "0.79.3",
     "react-native-animatable": "^1.4.0",
-    "react-native-chart-kit": "^6.12.0",
-    "react-native-document-picker": "^9.3.1",
     "react-native-dropdown-picker": "^5.4.6",
     "react-native-gesture-handler": "~2.24.0",
     "react-native-haptic-feedback": "^2.3.3",
@@ -81,17 +75,16 @@
     "react-native-reanimated-carousel": "^4.0.2",
     "react-native-safe-area-context": "5.4.0",
     "react-native-screens": "~4.11.1",
-    "react-native-skeleton-placeholder": "^5.2.4",
-    "react-native-snap-carousel": "^3.9.1",
+    "react-native-super-grid": "^6.0.1",
     "react-native-svg": "15.11.2",
     "react-native-web": "^0.20.0",
     "react-native-webview": "13.13.5",
     "realest_project": "file:",
     "stream-chat": "^9.5.1",
     "stream-chat-expo": "^7.1.1",
-    "styled-components": "^6.1.18",
     "tailwindcss": "^3.4.17",
-    "twrnc": "^4.8.0"
+    "twrnc": "^4.8.0",
+    "victory-native": "^41.17.3"
   },
   "devDependencies": {
     "@babel/core": "^7.25.2",
@@ -108,22 +101,15 @@
         "exclude": [
           "@fortawesome/fontawesome-svg-core",
           "@fortawesome/free-solid-svg-icons",
-          "react-native-document-picker",
           "@clerk/clerk-mcp",
           "@clerk/clerk-react",
           "@edvnz/refresh-control",
-          "@emotion/react",
-          "@emotion/styled",
-          "@mui/icons-material",
-          "@mui/material",
-          "@mui/styled-engine-sc",
-          "@prisma/client",
           "ajv",
           "paths-js",
           "realest_project",
-          "stream-chat",
-          "styled-components"
-        ]
+          "stream-chat"
+        ],
+        "listUnknownPackages": false
       }
     }
   }

@@ -1,7 +1,7 @@
 import { useAuth } from "@clerk/clerk-expo";
 import axios from "axios";
-import React, { useEffect, useState, useRef } from "react"; // Import useRef
-import { ScrollView, StyleSheet, Text, View, Animated, RefreshControl} from "react-native";
+import React, { useEffect, useState, useRef } from "react";
+import { ScrollView, StyleSheet, Text, View, Animated, RefreshControl } from "react-native";
 import { Card, Title, Chip, ActivityIndicator } from "react-native-paper";
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ionicons } from '@expo/vector-icons';
@@ -14,7 +14,7 @@ interface LeaveRequest {
   status: "PENDING" | "APPROVED" | "REJECTED";
   rejectionReason?: string | null;
   createdAt: string;
-  userId: string; // Ensure userId is part of the interface as you're filtering by it
+  userId: string;
 }
 
 export function LeaveRequestHistory() {
@@ -23,7 +23,6 @@ export function LeaveRequestHistory() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
-  // Use useRef to store Animated.Value instances so they persist across renders
   const fadeAnims = useRef<Animated.Value[]>([]);
 
   const fetchLeaveRequests = async () => {
@@ -47,15 +46,12 @@ export function LeaveRequestHistory() {
       );
 
       setRequests(userRequests);
-
-      // Initialize or reset fadeAnims for new requests
       fadeAnims.current = userRequests.map(() => new Animated.Value(0));
 
-      // Animate cards
       userRequests.forEach((_, index: number) => {
-        Animated.timing(fadeAnims.current[index], { // Access via .current
+        Animated.timing(fadeAnims.current[index], {
           toValue: 1,
-          duration: 500,
+          duration: 600,
           delay: index * 100,
           useNativeDriver: true,
         }).start();
@@ -81,7 +77,7 @@ export function LeaveRequestHistory() {
   const getStatusColor = (status: string) => {
     switch (status) {
       case "APPROVED":
-        return "#10b981";
+        return "#22c55e";
       case "REJECTED":
         return "#ef4444";
       default:
@@ -107,8 +103,8 @@ export function LeaveRequestHistory() {
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
-        <LinearGradient colors={['#f97316', '#ea580c']} style={styles.loadingGradient}>
-          <ActivityIndicator size="large" color="#fff" />
+        <LinearGradient colors={['#ffedd5', '#fed7aa']} style={styles.loadingGradient}>
+          <ActivityIndicator size="large" color="#f97316" />
           <Text style={styles.loadingText}>Loading Leave History...</Text>
         </LinearGradient>
       </View>
@@ -122,7 +118,7 @@ export function LeaveRequestHistory() {
         <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
       }
     >
-      <LinearGradient colors={['#f97316', '#ea580c']} style={styles.header}>
+      <LinearGradient colors={['#ffedd5', '#fed7aa']} style={styles.header}>
         <Title style={styles.title}>Leave Request History</Title>
       </LinearGradient>
 
@@ -137,11 +133,10 @@ export function LeaveRequestHistory() {
         <Text style={styles.emptyText}>No leave requests found.</Text>
       ) : (
         requests.map((request, index) => (
-          // Access Animated.Value instances from fadeAnims.current
           <Animated.View key={request.id} style={[styles.card, { opacity: fadeAnims.current[index] }]}>
             <Card style={styles.cardContainer}>
               <Card.Content>
-                <LinearGradient colors={['#f97316', '#ea580c']} style={styles.cardHeader}>
+                <LinearGradient colors={['#f8fafc', '#f1f5f9']} style={styles.cardHeader}>
                   <View style={styles.headerRow}>
                     <Text style={styles.dateRange}>
                       {formatDate(request.startDate)} - {formatDate(request.endDate)}
@@ -182,18 +177,18 @@ export function LeaveRequestHistory() {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 16,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#fff",
   },
   header: {
-    padding: 16,
-    borderRadius: 12,
-    marginBottom: 16,
+    padding: 20,
+    borderRadius: 16,
+    marginBottom: 20,
   },
   title: {
     fontSize: 24,
-    fontWeight: "bold",
-    color: "#fff",
+    fontWeight: "700",
+    fontFamily: "Manrope-Bold",
+    color: "#1e293b",
     textAlign: "center",
   },
   loadingContainer: {
@@ -202,31 +197,32 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   loadingGradient: {
-    padding: 20,
-    borderRadius: 12,
+    padding: 24,
+    borderRadius: 16,
     alignItems: 'center',
   },
   loadingText: {
-    color: '#fff',
+    color: '#1e293b',
     fontSize: 16,
+    fontFamily: "Manrope-Regular",
     marginTop: 12,
   },
   card: {
-    marginBottom: 16,
+    marginBottom: 20,
   },
   cardContainer: {
-    elevation: 2,
-    borderRadius: 12,
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    borderRadius: 16,
+    backgroundColor: '#fff',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
+    shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.1,
-    shadowRadius: 8,
+    shadowRadius: 12,
+    elevation: 5,
   },
   cardHeader: {
-    padding: 12,
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    padding: 16,
+    borderTopLeftRadius: 16,
+    borderTopRightRadius: 16,
     marginBottom: 12,
   },
   headerRow: {
@@ -236,47 +232,53 @@ const styles = StyleSheet.create({
   },
   dateRange: {
     fontSize: 16,
-    color: "#fff",
+    fontFamily: "Manrope-SemiBold",
+    color: "#1e293b",
     fontWeight: '600',
   },
   statusChip: {
-    height: 28,
+    height: 32,
   },
   statusText: {
     color: "#fff",
     fontSize: 12,
-    fontWeight: "bold",
+    fontFamily: "Manrope-Bold",
   },
   reasonLabel: {
     fontSize: 14,
-    fontWeight: "bold",
-    color: "#666",
-    marginBottom: 4,
+    fontWeight: "600",
+    fontFamily: "Manrope-SemiBold",
+    color: "#4b5563",
+    marginBottom: 6,
   },
   reasonText: {
     fontSize: 14,
-    color: "#333",
+    fontFamily: "Manrope-Regular",
+    color: "#1e293b",
     marginBottom: 12,
   },
   rejectionContainer: {
-    backgroundColor: "rgba(239, 68, 68, 0.1)",
-    padding: 8,
-    borderRadius: 4,
+    backgroundColor: "#fef2f2",
+    padding: 12,
+    borderRadius: 8,
     marginBottom: 12,
   },
   rejectionLabel: {
     fontSize: 14,
-    fontWeight: "bold",
-    color: "#d32f2f",
-    marginBottom: 4,
+    fontWeight: "600",
+    fontFamily: "Manrope-SemiBold",
+    color: "#ef4444",
+    marginBottom: 6,
   },
   rejectionText: {
     fontSize: 14,
-    color: "#d32f2f",
+    fontFamily: "Manrope-Regular",
+    color: "#ef4444",
   },
   submittedDate: {
     fontSize: 12,
-    color: "#666",
+    fontFamily: "Manrope-Regular",
+    color: "#6b7280",
     marginTop: 8,
   },
   alert: {
@@ -284,7 +286,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     backgroundColor: '#ef4444',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 16,
   },
   alertIcon: {
@@ -293,12 +295,14 @@ const styles = StyleSheet.create({
   alertText: {
     color: '#fff',
     fontSize: 14,
+    fontFamily: "Manrope-Regular",
     flex: 1,
   },
   emptyText: {
     textAlign: "center",
-    color: "#666",
+    color: "#6b7280",
     fontSize: 16,
+    fontFamily: "Manrope-Regular",
     marginTop: 32,
   },
 });
