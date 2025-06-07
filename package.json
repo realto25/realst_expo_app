@@ -1,5 +1,5 @@
 {
-  "name": "realest_project",
+  "name": "90-degree-pride-homes",
   "main": "expo-router/entry",
   "version": "1.0.0",
   "scripts": {
@@ -83,7 +83,6 @@
     "react-native-screens": "~4.11.1",
     "react-native-skeleton-placeholder": "^5.2.4",
     "react-native-snap-carousel": "^3.9.1",
-    "react-native-splash-screen": "^3.3.0",
     "react-native-svg": "15.11.2",
     "react-native-web": "^0.20.0",
     "react-native-webview": "13.13.5",
@@ -102,5 +101,30 @@
     "eslint-config-expo": "~9.2.0",
     "typescript": "~5.8.3"
   },
-  "private": true
+  "private": true,
+  "expo": {
+    "doctor": {
+      "reactNativeDirectoryCheck": {
+        "exclude": [
+          "@fortawesome/fontawesome-svg-core",
+          "@fortawesome/free-solid-svg-icons",
+          "react-native-document-picker",
+          "@clerk/clerk-mcp",
+          "@clerk/clerk-react",
+          "@edvnz/refresh-control",
+          "@emotion/react",
+          "@emotion/styled",
+          "@mui/icons-material",
+          "@mui/material",
+          "@mui/styled-engine-sc",
+          "@prisma/client",
+          "ajv",
+          "paths-js",
+          "realest_project",
+          "stream-chat",
+          "styled-components"
+        ]
+      }
+    }
+  }
 }

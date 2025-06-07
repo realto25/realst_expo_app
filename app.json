@@ -1,7 +1,7 @@
 {
   "expo": {
     "name": "90 Degree Pride Homes",
-    "slug": "90 Degree",
+    "slug": "90-degree-pride-homes",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/Icon/android/playstore-icon.png",
@@ -10,14 +10,14 @@
     "newArchEnabled": true,
     "ios": {
       "supportsTablet": true
-
     },
     "android": {
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/splash-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "package": "com.realestatex.ninetydegreepridehomes"
     },
     "web": {
       "bundler": "metro",
@@ -40,6 +40,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "556100a7-38cb-4392-b30b-eca6751e29fe"
+      }
     }
   }
 }
