@@ -5,7 +5,6 @@ import {
   Text, 
   TextInput, 
   TouchableOpacity, 
-  Alert, 
   Animated, 
   StyleSheet, 
   Dimensions 
@@ -27,17 +26,27 @@ export default function LeaveRequestScreen() {
   const submitLeave = async () => {
     if (!reason.trim() || !date.trim()) {
       setError("Please fill in all fields.");
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }).start();
       return;
     }
 
     const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
     if (!dateRegex.test(date)) {
       setError("Please enter a valid date (YYYY-MM-DD).");
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }).start();
       return;
     }
 
     try {
-      const res = await fetch("http://localhost:3000/api/manager-leave", {
+      const res = await fetch("https://main-admin-dashboard-orpin.vercel.app/api/manager-leave", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ clerkId: user?.id, reason, date }),
@@ -48,23 +57,33 @@ export default function LeaveRequestScreen() {
         setDate("");
         Animated.timing(fadeAnim, {
           toValue: 1,
-          duration: 500,
+          duration: 600,
           useNativeDriver: true,
         }).start(() => {
           setTimeout(() => setSuccess(null), 2000);
         });
       } else {
         setError("Failed to submit leave request.");
+        Animated.timing(fadeAnim, {
+          toValue: 1,
+          duration: 600,
+          useNativeDriver: true,
+        }).start();
       }
     } catch (err) {
       setError("Network error. Please try again.");
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 600,
+        useNativeDriver: true,
+      }).start();
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <LinearGradient 
-        colors={['#f97316', '#ea580c']} 
+        colors={['#ffedd5', '#fed7aa']} 
         style={styles.gradientBackground}
       >
         <View style={styles.container}>
@@ -77,7 +96,7 @@ export default function LeaveRequestScreen() {
             </Animated.View>
           )}
           {success && (
-            <Animated.View style={[styles.alert, { opacity: fadeAnim, backgroundColor: '#10b981' }]}>
+            <Animated.View style={[styles.alert, { opacity: fadeAnim, backgroundColor: '#22c55e' }]}>
               <Ionicons name="checkmark-circle-outline" size={20} color="#fff" style={styles.alertIcon} />
               <Text style={styles.alertText}>{success}</Text>
             </Animated.View>
@@ -119,11 +138,11 @@ export default function LeaveRequestScreen() {
             disabled={!user}
           >
             <LinearGradient
-              colors={['#10b981', '#059669']}
+              colors={['#f97316', '#ea580c']}
               style={styles.buttonGradient}
             >
               <Ionicons name="send-outline" size={20} color="#fff" style={styles.buttonIcon} />
-              <Text style={styles.buttonText}>Submit Leave Request</Text>
+              <Text style={styles.buttonText}>Submit Request</Text>
             </LinearGradient>
           </TouchableOpacity>
         </View>
@@ -135,6 +154,7 @@ export default function LeaveRequestScreen() {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
+    backgroundColor: '#fff',
   },
   gradientBackground: {
     flex: 1,
@@ -146,24 +166,22 @@ const styles = StyleSheet.create({
   },
   title: {
     fontSize: 28,
-    fontWeight: 'bold',
-    color: '#fff',
-    marginVertical: 20,
+    fontWeight: '700',
+    fontFamily: 'Manrope-Bold',
+    color: '#1e293b',
+    marginVertical: 24,
     textAlign: 'center',
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.9)',
+    backgroundColor: '#f8fafc',
     borderRadius: 12,
-    padding: 12,
+    padding: 14,
     marginBottom: 16,
     width: width * 0.9,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 8,
-    elevation: 3,
+    borderWidth: 1,
+    borderColor: '#e5e7eb',
   },
   inputIcon: {
     marginRight: 10,
@@ -171,14 +189,15 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
     fontSize: 16,
-    color: '#1f2937',
+    fontFamily: 'Manrope-Regular',
+    color: '#1e293b',
     paddingVertical: 8,
   },
   submitButton: {
     width: width * 0.9,
     borderRadius: 25,
     overflow: 'hidden',
-    marginTop: 16,
+    marginTop: 20,
   },
   buttonGradient: {
     flexDirection: 'row',
@@ -192,14 +211,15 @@ const styles = StyleSheet.create({
   buttonText: {
     color: '#fff',
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '700',
+    fontFamily: 'Manrope-Bold',
   },
   alert: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#ef4444',
     padding: 12,
-    borderRadius: 8,
+    borderRadius: 12,
     marginBottom: 16,
     width: width * 0.9,
   },
@@ -209,6 +229,7 @@ const styles = StyleSheet.create({
   alertText: {
     color: '#fff',
     fontSize: 14,
+    fontFamily: 'Manrope-Regular',
     flex: 1,
   },
 });

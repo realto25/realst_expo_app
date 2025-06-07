@@ -1,6 +1,6 @@
+import { useUser } from "@clerk/clerk-expo";
 import { MaterialCommunityIcons } from "@expo/vector-icons";
 import { useCallback, useEffect, useState } from "react";
-import { useUser } from "@clerk/clerk-expo";
 import {
   Alert,
   Dimensions,
@@ -10,22 +10,17 @@ import {
   StatusBar,
   StyleSheet,
   TouchableOpacity,
-  View
+  View,
 } from "react-native";
-import {
-  BarChart,
-  LineChart,
-  PieChart
-} from "react-native-chart-kit";
 import {
   ActivityIndicator,
   Avatar,
   DataTable,
   Surface,
-  Text
+  Text,
 } from "react-native-paper";
+import { VictoryArea, VictoryAxis, VictoryBar, VictoryChart, VictoryLabel, VictoryLine, VictoryPie, VictoryTheme } from "victory-native/dist";
 import {
-  clerkId,
   getAllPlots,
   getProjects,
   getUserFeedback,
@@ -61,7 +56,7 @@ interface DashboardStats {
 }
 
 export default function ManagerHomeTabScreen() {
-  const { user } = useUser();
+  const { user, isLoaded } = useUser(); // Get both user and isLoaded state
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -77,25 +72,25 @@ export default function ManagerHomeTabScreen() {
   const [projects, setProjects] = useState<ProjectType[]>([]);
   const [plots, setPlots] = useState<PlotType[]>([]);
   const [visits, setVisits] = useState<VisitRequest[]>([]);
-  const [feedback, setFeedback] = useState<any[]>([]);
 
   const loadData = useCallback(async () => {
     try {
       setError(null);
-      
-      // Get the current user's clerkId
-      const currentClerkId = clerkId();
-      
-      if (!currentClerkId) {
-        throw new Error("User not authenticated");
+      setLoading(true);
+
+      // Use user.id directly from the useUser hook
+      const currentUserId = user?.id;
+
+      if (!currentUserId) {
+        console.warn("Clerk user ID not available. Dashboard data might be limited.");
       }
-      
+
       // Use Promise.allSettled to handle partial failures gracefully
       const results = await Promise.allSettled([
         getProjects(),
         getAllPlots(),
         getVisitRequests(),
-        getUserFeedback(currentClerkId)
+        currentUserId ? getUserFeedback(currentUserId) : Promise.resolve([]), // Only fetch if user ID exists
       ]);
 
       // Extract successful results or use empty arrays as fallbacks
@@ -112,7 +107,7 @@ export default function ManagerHomeTabScreen() {
         }
       });
 
-      // Calculate statistics with safe null checks
+      // Calculate statistics with safe null/undefined checks
       const safeProjectsData = Array.isArray(projectsData) ? projectsData : [];
       const safePlotsData = Array.isArray(plotsData) ? plotsData : [];
       const safeVisitsData = Array.isArray(visitsData) ? visitsData : [];
@@ -120,9 +115,9 @@ export default function ManagerHomeTabScreen() {
 
       const availablePlots = safePlotsData.filter(p => p?.status === "AVAILABLE").length;
       const pendingVisits = safeVisitsData.filter(v => v?.status === "PENDING").length;
-      
-      // Calculate average rating with proper error handling
-      const avgRating = safeFeedbackData.length > 0 ? 
+
+      // Calculate average rating with proper error handling and type safety
+      const avgRating = safeFeedbackData.length > 0 ?
         safeFeedbackData.reduce((sum: number, f) => {
           const rating = typeof f?.rating === 'number' ? f.rating : 0;
           return sum + rating;
@@ -131,12 +126,14 @@ export default function ManagerHomeTabScreen() {
       // Calculate recent sales (last 7 days)
       const sevenDaysAgo = new Date();
       sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
-      
+      sevenDaysAgo.setHours(0, 0, 0, 0);
+
       const recentSales = safePlotsData.filter(p => {
         if (p?.status !== "SOLD" || !p?.createdAt) return false;
         try {
-          return new Date(p.createdAt) > sevenDaysAgo;
-        } catch {
+          return new Date(p.createdAt) >= sevenDaysAgo;
+        } catch (e) {
+          console.warn("Invalid createdAt date for plot:", p.createdAt, e);
           return false;
         }
       }).length;
@@ -147,19 +144,18 @@ export default function ManagerHomeTabScreen() {
         availablePlots,
         visitRequests: safeVisitsData.length,
         pendingVisits,
-        avgRating: Math.round(avgRating * 10) / 10, // Round to 1 decimal
+        avgRating: parseFloat(avgRating.toFixed(1)),
         recentSales,
       });
 
       setProjects(safeProjectsData);
       setPlots(safePlotsData);
       setVisits(safeVisitsData);
-      setFeedback(safeFeedbackData);
 
     } catch (error) {
-      console.error("Failed to load dashboard data:", error);
-      setError("Failed to load dashboard data. Please try again.");
-      
+      console.error("Critical error loading dashboard data:", error);
+      setError("Failed to load dashboard data. Please check your network and try again.");
+
       // Reset to empty states on complete failure
       setStats({
         projects: 0,
@@ -173,16 +169,22 @@ export default function ManagerHomeTabScreen() {
       setProjects([]);
       setPlots([]);
       setVisits([]);
-      setFeedback([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  }, []);
+  }, [user?.id]); // Depend on user.id instead of the entire user object
 
   useEffect(() => {
-    loadData();
-  }, [loadData]);
+    // Only load data when Clerk has finished loading and we have a user
+    if (isLoaded && user) {
+      loadData();
+    } else if (isLoaded && !user) {
+      // Handle case where Clerk is loaded but no user is authenticated
+      setError("User not authenticated. Please log in.");
+      setLoading(false);
+    }
+  }, [loadData, isLoaded, user]);
 
   const onRefresh = useCallback(() => {
     setRefreshing(true);
@@ -197,7 +199,8 @@ export default function ManagerHomeTabScreen() {
         [
           { text: "Retry", onPress: loadData },
           { text: "OK", style: "cancel" }
-        ]
+        ],
+        { cancelable: false }
       );
     }
   }, [error, loadData]);
@@ -207,11 +210,14 @@ export default function ManagerHomeTabScreen() {
     showErrorAlert();
   }, [showErrorAlert]);
 
-  if (loading) {
+  // Show loading state while Clerk is initializing
+  if (!isLoaded || loading) {
     return (
       <View style={styles.loadingContainer}>
         <ActivityIndicator animating={true} size="large" color="#007AFF" />
-        <Text style={styles.loadingText}>Loading Dashboard...</Text>
+        <Text style={styles.loadingText}>
+          {!isLoaded ? "Initializing..." : "Loading Dashboard..."}
+        </Text>
       </View>
     );
   }
@@ -219,41 +225,49 @@ export default function ManagerHomeTabScreen() {
   // Safe chart data preparation with better error handling
   const createPriceDistribution = () => {
     if (!projects.length || !plots.length) {
-      return [{
-        name: 'No Data',
-        price: 0,
-        color: '#E5E5EA',
-        legendFontColor: "#8E8E93",
-        legendFontSize: 12
-      }];
+      return [{ x: 'No Data', y: 0 }];
     }
 
-    return projects.map(project => {
+    const data = projects.map((project, index) => {
       const projectPlots = plots.filter(p => p?.projectId === project?.id);
-      const avgPrice = projectPlots.length ? 
+      const avgPrice = projectPlots.length ?
         projectPlots.reduce((sum, p) => sum + (typeof p?.price === 'number' ? p.price : 0), 0) / projectPlots.length : 0;
-      
+
       return {
-        name: project?.name || 'Unnamed Project',
-        price: Math.round(avgPrice),
-        color: `#${Math.floor(Math.random()*16777215).toString(16).padStart(6, '0')}`,
-        legendFontColor: "#8E8E93",
-        legendFontSize: 12
+        x: project?.name?.substring(0, 10) || `Project ${index + 1}`,
+        y: Math.round(avgPrice),
+        label: avgPrice > 0 ? `$${Math.round(avgPrice).toLocaleString()}` : ''
       };
     });
+
+    if (data.some(d => d.y > 0)) {
+      return data.filter(d => d.y > 0);
+    }
+    return data;
   };
 
   const createVisitTrends = () => {
     const trends = Array(7).fill(0).map((_, i) => {
       const date = new Date();
       date.setDate(date.getDate() - (6 - i));
-      return visits.filter(v => {
+      date.setHours(0, 0, 0, 0);
+
+      const dayVisits = visits.filter(v => {
         try {
           return v?.date && new Date(v.date).toDateString() === date.toDateString();
-        } catch {
+        } catch (e) {
+          console.warn("Invalid visit date for trend:", v?.date, e);
           return false;
         }
       }).length;
+
+      const dayOfWeek = new Date(date).toLocaleDateString('en-US', { weekday: 'short' });
+
+      return {
+        x: dayOfWeek,
+        y: dayVisits,
+        label: `${dayVisits}`
+      };
     });
     return trends;
   };
@@ -265,34 +279,18 @@ export default function ManagerHomeTabScreen() {
       SOLD: plots.filter(p => p?.status === "SOLD").length
     };
 
-    return [
-      {
-        name: "Available",
-        count: statusCounts.AVAILABLE,
-        color: "#34C759",
-        legendFontColor: "#8E8E93",
-        legendFontSize: 12
-      },
-      {
-        name: "Reserved",
-        count: statusCounts.RESERVED,
-        color: "#FF9500",
-        legendFontColor: "#8E8E93",
-        legendFontSize: 12
-      },
-      {
-        name: "Sold",
-        count: statusCounts.SOLD,
-        color: "#FF3B30",
-        legendFontColor: "#8E8E93",
-        legendFontSize: 12
-      }
+    const data = [
+      { x: "Available", y: statusCounts.AVAILABLE },
+      { x: "Reserved", y: statusCounts.RESERVED },
+      { x: "Sold", y: statusCounts.SOLD }
     ];
+
+    return data.filter(item => item.y > 0);
   };
 
   const getTopProjects = () => {
     if (!projects.length || !plots.length) return [];
-    
+
     return [...projects]
       .map(project => ({
         ...project,
@@ -307,22 +305,9 @@ export default function ManagerHomeTabScreen() {
   const statusDistribution = createStatusDistribution();
   const topProjects = getTopProjects();
 
-  const chartConfig = {
-    backgroundColor: "#ffffff",
-    backgroundGradientFrom: "#ffffff",
-    backgroundGradientTo: "#ffffff",
-    decimalPlaces: 0,
-    color: (opacity = 1) => `rgba(0, 122, 255, ${opacity})`,
-    labelColor: (opacity = 1) => `rgba(60, 60, 67, ${opacity})`,
-    style: {
-      borderRadius: BORDER_RADIUS
-    },
-    propsForDots: {
-      r: "6",
-      strokeWidth: "2",
-      stroke: "#007AFF"
-    }
-  };
+  // Victory chart color schemes
+  const colorScale = ["#34C759", "#FF9500", "#FF3B30", "#007AFF", "#5856D6"];
+  const pieColorScale = ["#34C759", "#FF9500", "#FF3B30"];
 
   const getVisitStatusColor = (status: string) => {
     switch (status) {
@@ -336,13 +321,14 @@ export default function ManagerHomeTabScreen() {
 
   const formatVisitDate = (dateString: string) => {
     try {
-      return new Date(dateString).toLocaleDateString();
+      const date = new Date(dateString);
+      return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     } catch {
       return "Invalid Date";
     }
   };
 
-  const getUserInitials = (userData: any) => {
+  const getUserInitials = (userData: any) => { // Consider more specific type than 'any'
     if (!userData?.name) return "V";
     return userData.name.split(" ").map((n: string) => n[0]).join("").toUpperCase();
   };
@@ -364,13 +350,13 @@ export default function ManagerHomeTabScreen() {
   return (
     <View style={styles.container}>
       <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      
+
       <ScrollView
         style={styles.scrollView}
         contentContainerStyle={styles.scrollContent}
         refreshControl={
-          <RefreshControl 
-            refreshing={refreshing} 
+          <RefreshControl
+            refreshing={refreshing}
             onRefresh={onRefresh}
             tintColor="#007AFF"
             colors={["#007AFF"]}
@@ -385,9 +371,9 @@ export default function ManagerHomeTabScreen() {
             <Text style={styles.headerTitle}>Dashboard</Text>
           </View>
           <TouchableOpacity style={styles.profileButton}>
-            <Avatar.Text 
-              size={40} 
-              label={getManagerInitials()} 
+            <Avatar.Text
+              size={40}
+              label={getManagerInitials()}
               style={styles.avatar}
               labelStyle={styles.avatarLabel}
             />
@@ -457,7 +443,7 @@ export default function ManagerHomeTabScreen() {
         </View>
 
         {/* Charts Section */}
-        {statusDistribution.some(s => s.count > 0) && (
+        {statusDistribution.length > 0 && statusDistribution.some(d => d.y > 0) && (
           <Surface style={styles.chartCard}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Property Distribution</Text>
@@ -465,83 +451,128 @@ export default function ManagerHomeTabScreen() {
                 <MaterialCommunityIcons name="dots-horizontal" size={20} color="#8E8E93" />
               </TouchableOpacity>
             </View>
-            <PieChart
-              data={statusDistribution}
-              width={screenWidth - 64}
-              height={200}
-              chartConfig={chartConfig}
-              accessor="count"
-              backgroundColor="transparent"
-              paddingLeft="15"
-              absolute
-              hasLegend={true}
-            />
+            <View style={styles.chartContainer}>
+              <VictoryPie
+                data={statusDistribution}
+                width={screenWidth - (CARD_SPACING * 2)}
+                height={220}
+                colorScale={pieColorScale}
+                innerRadius={50}
+                padAngle={3}
+                labelRadius={({ innerRadius }) => innerRadius + 60}
+                theme={VictoryTheme.material}
+                labelComponent={<VictoryLabel style={{ fontSize: 14, fill: "#1C1C1E" }} />}
+              />
+            </View>
           </Surface>
         )}
 
-        {visitTrends.some(v => v > 0) && (
+        {visitTrends.some(v => v.y > 0) && (
           <Surface style={styles.chartCard}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Visit Trends</Text>
               <Text style={styles.cardSubtitle}>Last 7 days</Text>
             </View>
-            <LineChart
-              data={{
-                labels: ["6d", "5d", "4d", "3d", "2d", "1d", "Today"],
-                datasets: [
-                  {
-                    data: visitTrends.length ? visitTrends : [0],
-                    color: (opacity = 1) => `rgba(0, 122, 255, ${opacity})`,
-                    strokeWidth: 3
-                  }
-                ]
-              }}
-              width={screenWidth - 64}
-              height={220}
-              chartConfig={chartConfig}
-              bezier
-              style={styles.chart}
-            />
+            <View style={styles.chartContainer}>
+              <VictoryChart
+                width={screenWidth - (CARD_SPACING * 2)}
+                height={220}
+                theme={VictoryTheme.material}
+                padding={{ left: 50, top: 20, right: 50, bottom: 50 }}
+              >
+                <VictoryAxis
+                  dependentAxis
+                  tickFormat={(value) => `${value}`}
+                  style={{
+                    tickLabels: { fontSize: 12, fill: "#8E8E93" },
+                    grid: { stroke: "#F2F2F7" }
+                  }}
+                />
+                <VictoryAxis
+                  tickFormat={(x) => x}
+                  style={{
+                    tickLabels: { fontSize: 12, fill: "#8E8E93" },
+                    grid: { stroke: "transparent" }
+                  }}
+                />
+                <VictoryArea
+                  data={visitTrends}
+                  style={{
+                    data: { fill: "#007AFF", fillOpacity: 0.1, stroke: "#007AFF", strokeWidth: 3 }
+                  }}
+                  animate={{
+                    duration: 1000,
+                    onLoad: { duration: 500 }
+                  }}
+                />
+                <VictoryLine
+                  data={visitTrends}
+                  style={{
+                    data: { stroke: "#007AFF", strokeWidth: 3 }
+                  }}
+                  animate={{
+                    duration: 1000,
+                    onLoad: { duration: 500 }
+                  }}
+                />
+              </VictoryChart>
+            </View>
           </Surface>
         )}
 
-        {priceDistribution.length > 1 && priceDistribution.some(p => p.price > 0) && (
+        {priceDistribution.length > 0 && priceDistribution.some(p => p.y > 0) && (
           <Surface style={styles.chartCard}>
             <View style={styles.cardHeader}>
               <Text style={styles.cardTitle}>Average Plot Prices</Text>
               <Text style={styles.cardSubtitle}>By project</Text>
             </View>
-            <BarChart
-              data={{
-                labels: priceDistribution.map(p => 
-                  p.name.length > 8 ? p.name.substring(0, 8) + "..." : p.name
-                ),
-                datasets: [
-                  {
-                    data: priceDistribution.map(p => p.price)
-                  }
-                ]
-              }}
-              width={screenWidth - 64}
-              height={220}
-              yAxisLabel="$"
-              yAxisSuffix=""
-              chartConfig={chartConfig}
-              style={styles.chart}
-            />
+            <View style={styles.chartContainer}>
+              <VictoryChart
+                width={screenWidth - (CARD_SPACING * 2)}
+                height={220}
+                theme={VictoryTheme.material}
+                domainPadding={{ x: 20 }}
+                padding={{ left: 80, top: 20, right: 50, bottom: 80 }}
+              >
+                <VictoryAxis
+                  dependentAxis
+                  tickFormat={(value) => `$${value.toLocaleString()}`}
+                  style={{
+                    tickLabels: { fontSize: 11, fill: "#8E8E93" },
+                    grid: { stroke: "#F2F2F7" }
+                  }}
+                />
+                <VictoryAxis
+                  style={{
+                    tickLabels: { fontSize: 11, fill: "#8E8E93", angle: -45, verticalAnchor: "middle", textAnchor: "end" },
+                    grid: { stroke: "transparent" }
+                  }}
+                />
+                <VictoryBar
+                  data={priceDistribution}
+                  style={{
+                    data: { fill: "#007AFF" }
+                  }}
+                  animate={{
+                    duration: 1000,
+                    onLoad: { duration: 500 }
+                  }}
+                />
+              </VictoryChart>
+            </View>
           </Surface>
         )}
 
         {/* Top Projects */}
         {topProjects.length > 0 && (
           <Surface style={styles.sectionCard}>
-            <View style={styles.cardHeader}>
+            <View style={[styles.cardHeader, styles.sectionCardPadding]}>
               <Text style={styles.cardTitle}>Top Performing Projects</Text>
               <TouchableOpacity>
                 <Text style={styles.seeAllButton}>See All</Text>
               </TouchableOpacity>
             </View>
-            
+
             <DataTable style={styles.dataTable}>
               <DataTable.Header style={styles.tableHeader}>
                 <DataTable.Title textStyle={styles.tableHeaderText}>Project</DataTable.Title>
@@ -552,9 +583,9 @@ export default function ManagerHomeTabScreen() {
               {topProjects.map((project) => {
                 const projectPlots = plots.filter(p => p?.projectId === project?.id);
                 const soldPlots = projectPlots.filter(p => p?.status === "SOLD").length;
-                
+
                 return (
-                  <DataTable.Row key={project?.id || Math.random()} style={styles.tableRow}>
+                  <DataTable.Row key={project?.id || `project-${Math.random()}`} style={styles.tableRow}>
                     <DataTable.Cell textStyle={styles.tableCellText}>
                       {project?.name || 'Unknown Project'}
                     </DataTable.Cell>
@@ -574,18 +605,18 @@ export default function ManagerHomeTabScreen() {
         {/* Recent Visit Requests */}
         {visits.length > 0 && (
           <Surface style={styles.sectionCard}>
-            <View style={styles.cardHeader}>
+            <View style={[styles.cardHeader, styles.sectionCardPadding]}>
               <Text style={styles.cardTitle}>Recent Visit Requests</Text>
               <TouchableOpacity>
                 <Text style={styles.seeAllButton}>See All</Text>
               </TouchableOpacity>
             </View>
-            
+
             {visits.slice(0, 3).map((visit) => (
-              <TouchableOpacity key={visit?.id || Math.random()} style={styles.visitItem}>
-                <Avatar.Text 
-                  size={44} 
-                  label={getUserInitials(visit?.user)} 
+              <TouchableOpacity key={visit?.id || `visit-${Math.random()}`} style={styles.visitItem}>
+                <Avatar.Text
+                  size={44}
+                  label={getUserInitials(visit?.user)}
                   style={styles.visitAvatar}
                   labelStyle={styles.visitAvatarLabel}
                 />
@@ -602,7 +633,7 @@ export default function ManagerHomeTabScreen() {
                 </View>
                 <View style={[
                   styles.visitStatus,
-                  { backgroundColor: getVisitStatusColor(visit?.status) }
+                  { backgroundColor: getVisitStatusColor(visit?.status || 'UNKNOWN') }
                 ]}>
                   <Text style={styles.visitStatusText}>
                     {visit?.status || 'UNKNOWN'}
@@ -614,12 +645,12 @@ export default function ManagerHomeTabScreen() {
         )}
 
         {/* Empty State */}
-        {projects.length === 0 && plots.length === 0 && visits.length === 0 && !loading && (
+        {projects.length === 0 && plots.length === 0 && visits.length === 0 && !loading && !error && (
           <Surface style={styles.emptyStateCard}>
             <MaterialCommunityIcons name="chart-line" size={64} color="#C7C7CC" />
             <Text style={styles.emptyStateTitle}>No Data Available</Text>
             <Text style={styles.emptyStateSubtitle}>
-              Pull down to refresh and load your dashboard data
+              Pull down to refresh and load your dashboard data, or check backend connection.
             </Text>
             <TouchableOpacity style={styles.retryButton} onPress={loadData}>
               <Text style={styles.retryButtonText}>Retry Loading</Text>
@@ -644,6 +675,7 @@ const styles = StyleSheet.create({
   },
   scrollContent: {
     paddingTop: SAFE_AREA_TOP + 20,
+    paddingBottom: 20,
   },
   loadingContainer: {
     flex: 1,
@@ -699,6 +731,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#FFEBEE",
     borderLeftWidth: 4,
     borderLeftColor: "#FF453A",
+    ...SHADOW_CONFIG,
   },
   errorText: {
     flex: 1,
@@ -714,13 +747,13 @@ const styles = StyleSheet.create({
   statsGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
+    justifyContent: "space-between",
     paddingHorizontal: 20,
     marginBottom: 24,
   },
   statCard: {
-    width: (screenWidth - 60) / 2,
-    marginRight: 10,
-    marginBottom: 12,
+    width: (screenWidth - (CARD_SPACING * 3)) / 2,
+    marginBottom: CARD_SPACING,
     padding: 20,
     borderRadius: BORDER_RADIUS,
     backgroundColor: "#FFFFFF",
@@ -734,7 +767,7 @@ const styles = StyleSheet.create({
     width: 48,
     height: 48,
     borderRadius: 24,
-    backgroundColor: "#F2F2F7",
+    backgroundColor: "#EBF5FF",
     justifyContent: "center",
     alignItems: "center",
     marginBottom: 12,
@@ -752,20 +785,28 @@ const styles = StyleSheet.create({
     textAlign: "center",
   },
   chartCard: {
-    marginHorizontal: 20,
-    marginBottom: 20,
+    marginHorizontal: CARD_SPACING,
+    marginBottom: CARD_SPACING,
     padding: 20,
     borderRadius: BORDER_RADIUS,
     backgroundColor: "#FFFFFF",
     ...SHADOW_CONFIG,
   },
+  chartContainer: {
+    alignItems: "center",
+    justifyContent: "center",
+  },
   sectionCard: {
-    marginHorizontal: 20,
-    marginBottom: 20,
+    marginHorizontal: CARD_SPACING,
+    marginBottom: CARD_SPACING,
     borderRadius: BORDER_RADIUS,
     backgroundColor: "#FFFFFF",
     ...SHADOW_CONFIG,
-    overflow: "hidden",
+    overflow: "hidden", // Important for DataTable and other overflowing content
+  },
+  sectionCardPadding: {
+    paddingHorizontal: 20,
+    paddingTop: 20,
   },
   cardHeader: {
     flexDirection: "row",
@@ -788,23 +829,20 @@ const styles = StyleSheet.create({
     color: "#007AFF",
     fontWeight: "500",
   },
-  chart: {
-    borderRadius: BORDER_RADIUS,
-  },
   dataTable: {
-    backgroundColor: "transparent",
+    paddingHorizontal: 0, // DataTable itself has padding, adjust if needed
   },
   tableHeader: {
-    backgroundColor: "#F9F9F9",
-    borderTopLeftRadius: 12,
-    borderTopRightRadius: 12,
+    backgroundColor: "#F2F2F7",
+    paddingHorizontal: 20,
   },
   tableHeaderText: {
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: "600",
-    color: "#1C1C1E",
+    color: "#8E8E93",
   },
   tableRow: {
+    paddingHorizontal: 20,
     borderBottomWidth: 1,
     borderBottomColor: "#F2F2F7",
   },
@@ -815,22 +853,22 @@ const styles = StyleSheet.create({
   visitItem: {
     flexDirection: "row",
     alignItems: "center",
+    paddingVertical: 12,
     paddingHorizontal: 20,
-    paddingVertical: 16,
     borderBottomWidth: 1,
     borderBottomColor: "#F2F2F7",
   },
   visitAvatar: {
-    backgroundColor: "#E5E5EA",
+    backgroundColor: "#5856D6",
+    marginRight: 12,
   },
   visitAvatarLabel: {
     fontSize: 16,
     fontWeight: "600",
-    color: "#1C1C1E",
+    color: "#FFFFFF",
   },
   visitDetails: {
     flex: 1,
-    marginLeft: 16,
   },
   visitName: {
     fontSize: 16,
@@ -839,61 +877,63 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   visitPlot: {
-    fontSize: 14,
+    fontSize: 13,
     color: "#8E8E93",
     marginBottom: 2,
   },
   visitDate: {
-    fontSize: 13,
-    color: "#8E8E93",
+    fontSize: 12,
+    color: "#C7C7CC",
   },
   visitStatus: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 16,
-    minWidth: 80,
-    alignItems: "center",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
   },
   visitStatusText: {
-    color: "#FFFFFF",
     fontSize: 12,
     fontWeight: "600",
-    textTransform: "capitalize",
+    color: "#FFFFFF",
   },
   emptyStateCard: {
-    marginHorizontal: 20,
-    marginTop: 40,
-    padding: 40,
+    marginHorizontal: CARD_SPACING,
+    marginBottom: CARD_SPACING,
+    padding: 30,
     borderRadius: BORDER_RADIUS,
     backgroundColor: "#FFFFFF",
     alignItems: "center",
+    justifyContent: "center",
     ...SHADOW_CONFIG,
+    minHeight: screenHeight * 0.4, // Ensure it's visible on smaller screens
   },
   emptyStateTitle: {
     fontSize: 20,
-    fontWeight: "600",
+    fontWeight: "700",
     color: "#1C1C1E",
-    marginTop: 16,
+    marginTop: 20,
     marginBottom: 8,
+    textAlign: "center",
   },
   emptyStateSubtitle: {
-    fontSize: 16,
+    fontSize: 14,
     color: "#8E8E93",
     textAlign: "center",
-    lineHeight: 22,
-    marginBottom: 20,
+    marginBottom: 24,
+    lineHeight: 20,
+    paddingHorizontal: 20,
   },
   retryButton: {
     backgroundColor: "#007AFF",
     paddingHorizontal: 24,
     paddingVertical: 12,
-    borderRadius: 8,
+    borderRadius: 10,
   },
   retryButtonText: {
     fontSize: 16,
     fontWeight: "600",
+    color: "#FFFFFF",
   },
   bottomPadding: {
-    height: 40,
+    height: 40, // Add some space at the bottom for better scrollability
   },
 });
