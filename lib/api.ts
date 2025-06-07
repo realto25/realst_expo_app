@@ -1,39 +1,121 @@
+import { tokenCache } from "@clerk/clerk-expo/token-cache";
 import axios from "axios";
 
-// ✅ Base URL of your deployed Next.js backend
-const BASE_URL = "https://main-admin-dashboard-orpin.vercel.app";
+// API Configuration
+const API_CONFIG = {
+  BASE_URL:
+    process.env.EXPO_PUBLIC_API_URL ||
+    "https://main-admin-dashboard-orpin.vercel.app/api",
+  TIMEOUT: 15000,
+  ENDPOINTS: {
+    AUTH: {
+      PROFILE: "/users/profile",
+      WEBHOOK_PROFILE: (clerkId: string) => `/users/${clerkId}/profile`,
+      UPDATE_PROFILE: "/users",
+    },
+    BOOKINGS: {
+      CREATE: "/bookings",
+      LIST: "/bookings",
+      DETAILS: (id: string) => `/bookings/${id}`,
+    },
+    PROJECTS: {
+      LIST: "/projects",
+      DETAILS: (id: string) => `/projects/${id}`,
+    },
+    PLOTS: {
+      LIST: "/plots",
+      DETAILS: (id: string) => `/plots/${id}`,
+      BY_PROJECT: (projectId: string) => `/plots?projectId=${projectId}`,
+    },
+    FEEDBACK: {
+      CREATE: "/feedback",
+      LIST: "/feedback",
+    },
+    CAMERAS: {
+      LIST: "/cameras",
+      CREATE: "/cameras",
+      UPDATE: (id: string) => `/cameras/${id}`,
+      DELETE: (id: string) => `/cameras/${id}`,
+    },
+    LANDS: {
+      BY_PLOT: "/lands/by-plot",
+      OWNED: "/owned-lands",
+    },
+  },
+} as const;
 
-// Axios instance
+// Axios instance with proper configuration
 const api = axios.create({
-  baseURL: BASE_URL,
-  timeout: 15000, // Increased timeout
-  headers: { "Content-Type": "application/json" },
+  baseURL: API_CONFIG.BASE_URL,
+  timeout: API_CONFIG.TIMEOUT,
+  headers: {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+  },
 });
 
-// Global error interceptor
+// Request interceptor
+api.interceptors.request.use(
+  async (config) => {
+    try {
+      // Add auth token if available
+      const token = await tokenCache?.getToken("default");
+      if (token) {
+        config.headers.Authorization = `Bearer ${token}`;
+      }
+      return config;
+    } catch (error) {
+      console.error("Error getting auth token:", error);
+      return config; // Continue without token if there's an error
+    }
+  },
+  (error) => {
+    console.error("Request error:", error);
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor with better error handling
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    console.error("API Error:", error.message);
-    if (error.response) {
-      console.error("Response data:", error.response.data);
-      console.error("Response status:", error.response.status);
-
-      if (error.response.status === 404) {
-        console.error("Resource not found");
-      } else if (error.response.status === 401) {
-        console.error("Unauthorized access");
-      } else if (error.response.status === 409) {
-        console.error("Conflict - duplicate request");
-      } else if (error.response.status === 500) {
-        console.error("Server error");
-      }
-    } else if (error.request) {
-      console.error("No response received:", error.request);
-    } else {
-      console.error("Error setting up request:", error.message);
+    if (!error.response) {
+      // Network error
+      console.error("Network error:", error.message);
+      return Promise.reject(new Error("Please check your internet connection"));
     }
-    return Promise.reject(error);
+
+    const { status, data } = error.response;
+    console.error("API Error:", {
+      status,
+      data,
+      url: error.config?.url,
+      method: error.config?.method,
+    });
+
+    // Handle specific status codes
+    switch (status) {
+      case 400:
+        return Promise.reject(new Error(data?.error || "Invalid request"));
+      case 401:
+        return Promise.reject(new Error("Please sign in to continue"));
+      case 403:
+        return Promise.reject(
+          new Error("You don't have permission for this action")
+        );
+      case 404:
+        return Promise.reject(new Error("Resource not found"));
+      case 409:
+        return Promise.reject(
+          new Error("This action conflicts with existing data")
+        );
+      case 500:
+        return Promise.reject(
+          new Error("Server error. Please try again later")
+        );
+      default:
+        return Promise.reject(new Error(data?.error || "Something went wrong"));
+    }
   }
 );
 
@@ -54,6 +136,7 @@ export type ProjectType = {
   rating: number;
   plotsAvailable: number;
   priceRange: string;
+  location: string;
   amenities: string[];
 };
 
@@ -154,7 +237,7 @@ export const createOrUpdateUser = async (user: UserType) => {
 
 export const getProjects = async (): Promise<ProjectType[]> => {
   try {
-    const res = await api.get("/projects");
+    const res = await api.get(API_CONFIG.ENDPOINTS.PROJECTS.LIST);
     return res.data;
   } catch (error) {
     console.error("Error fetching projects:", error);
@@ -166,7 +249,7 @@ export const getPlotsByProjectId = async (
   projectId: string
 ): Promise<PlotType[]> => {
   try {
-    const res = await api.get(`/plots?projectId=${projectId}`);
+    const res = await api.get(API_CONFIG.ENDPOINTS.PLOTS.BY_PROJECT(projectId));
     return res.data;
   } catch (error) {
     console.error("Error fetching plots:", error);
@@ -198,56 +281,30 @@ export const getPlotById = async (id: string): Promise<PlotType | null> => {
 
 export const submitVisitRequest = async (data: VisitRequestType) => {
   try {
-    console.log("Submitting visit request:", data);
+    // Validate data
+    if (!data.name?.trim()) throw new Error("Name is required");
+    if (!data.email?.trim()) throw new Error("Email is required");
+    if (!data.phone?.trim()) throw new Error("Phone number is required");
+    if (!data.date) throw new Error("Date is required");
+    if (!data.time?.trim()) throw new Error("Time is required");
+    if (!data.plotId?.trim()) throw new Error("Plot ID is required");
 
-    // Validate data before sending
-    if (!data.name?.trim()) {
-      throw new Error("Name is required");
-    }
-    if (!data.email?.trim()) {
-      throw new Error("Email is required");
-    }
-    if (!data.phone?.trim()) {
-      throw new Error("Phone number is required");
-    }
-    if (!data.date) {
-      throw new Error("Date is required");
-    }
-    if (!data.time?.trim()) {
-      throw new Error("Time is required");
-    }
-    if (!data.plotId?.trim()) {
-      throw new Error("Plot ID is required");
-    }
+    const requestData = {
+      data: {
+        ...data,
+        status: "PENDING",
+      },
+      action: "create",
+    };
 
-    const res = await api.post("/visit-requests", data);
-    console.log("Visit request response:", res.data);
+    const res = await api.post(
+      API_CONFIG.ENDPOINTS.BOOKINGS.CREATE,
+      requestData
+    );
     return res.data;
   } catch (error) {
-    console.error("Submit visit request error:", error);
-
-    if (axios.isAxiosError(error)) {
-      if (error.response?.status === 401) {
-        throw new Error("Please login to book a visit");
-      } else if (error.response?.status === 404) {
-        throw new Error("Plot not found");
-      } else if (error.response?.status === 400) {
-        throw new Error(error.response.data?.error || "Invalid request data");
-      } else if (error.response?.status === 409) {
-        throw new Error(
-          "You already have a pending visit request for this plot"
-        );
-      } else if (error.response?.status === 500) {
-        throw new Error("Server error. Please try again later");
-      }
-      throw new Error(
-        error.response?.data?.error || "Failed to submit visit request"
-      );
-    }
-
-    throw new Error(
-      "Failed to submit visit request. Please check your connection and try again"
-    );
+    // Error is already handled by the interceptor
+    throw error;
   }
 };
 
@@ -286,7 +343,9 @@ export const getVisitRequests = async (
           console.error("Server error for visit requests (500).");
           break; // Fall through to return empty array
         default:
-          console.error(error.response?.data?.error || "Failed to load bookings");
+          console.error(
+            error.response?.data?.error || "Failed to load bookings"
+          );
           break; // Fall through to return empty array
       }
     }
@@ -403,22 +462,24 @@ export const getUserProfile = async (
 
     return webhookRes.data;
   } catch (error) {
-    console.error("Error fetching user profile:", error);
-    if (axios.isAxiosError(error)) {
-      switch (error.response?.status) {
-        case 404:
-          throw new Error("User profile not found");
-        case 401:
-          throw new Error("Unauthorized access");
-        case 500:
-          throw new Error("Server error. Please try again later");
-        default:
-          throw new Error(
-            error.response?.data?.error || "Failed to load profile"
-          );
-      }
-    }
-    throw new Error("Failed to load profile");
+    // Instead of throwing errors, return a basic profile
+    console.log("Using basic profile data for user:", clerkId);
+
+    // Return a basic profile with the available Clerk data
+    return {
+      id: clerkId,
+      firstName: null,
+      lastName: null,
+      emailAddresses: [],
+      phoneNumbers: [],
+      imageUrl: "",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      lastSignInAt: Date.now(),
+      publicMetadata: {
+        role: "GUEST",
+      },
+    };
   }
 };
 
@@ -448,42 +509,110 @@ export const getUserFeedback = async (clerkId: string) => {
 };
 
 export const getLandsByPlotId = async (plotId: string) => {
-  const res = await fetch(
-    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/lands/by-plot?plotId=${plotId}`
-  );
-  if (!res.ok) throw new Error("Failed to fetch lands");
-  return await res.json();
+  try {
+    const res = await api.get(`/lands/by-plot`, {
+      params: { plotId },
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error fetching lands:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 404:
+          throw new Error("No lands found");
+        case 401:
+          throw new Error("Unauthorized access");
+        case 500:
+          throw new Error("Server error. Please try again later");
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to fetch lands"
+          );
+      }
+    }
+    throw new Error("Failed to fetch lands");
+  }
 };
 
 export const getOwnedLands = async (clerkId: string) => {
-  const response = await fetch(
-    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/owned-lands?clerkId=${clerkId}`
-  );
-  if (!response.ok) throw new Error("Failed to fetch owned lands");
-  return await response.json();
+  try {
+    const res = await api.get("/owned-lands", {
+      params: { clerkId },
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error fetching owned lands:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 404:
+          throw new Error("No owned lands found");
+        case 401:
+          throw new Error("Unauthorized access");
+        case 500:
+          throw new Error("Server error. Please try again later");
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to fetch owned lands"
+          );
+      }
+    }
+    throw new Error("Failed to fetch owned lands");
+  }
 };
 
 export const getUserByClerkId = async (clerkId: string) => {
-  const res = await fetch(
-    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/users?clerkId=${clerkId}`
-  );
-  if (!res.ok) throw new Error("Failed to fetch user");
-  return await res.json();
+  try {
+    const res = await api.get("/users", {
+      params: { clerkId },
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error fetching user:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 404:
+          throw new Error("User not found");
+        case 401:
+          throw new Error("Unauthorized access");
+        case 500:
+          throw new Error("Server error. Please try again later");
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to fetch user"
+          );
+      }
+    }
+    throw new Error("Failed to fetch user");
+  }
 };
 
 export const updateUserProfile = async (clerkId: string, data: any) => {
-  const res = await fetch(
-    `https://main-admin-dashboard-git-main-realtos-projects.vercel.app/api/users?clerkId=${clerkId}`,
-    {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(data),
+  try {
+    const res = await api.put("/users", data, {
+      params: { clerkId },
+    });
+    return res.data;
+  } catch (error) {
+    console.error("Error updating profile:", error);
+    if (axios.isAxiosError(error)) {
+      switch (error.response?.status) {
+        case 400:
+          throw new Error(error.response.data?.error || "Invalid profile data");
+        case 401:
+          throw new Error("Unauthorized access");
+        case 404:
+          throw new Error("User not found");
+        case 500:
+          throw new Error("Server error. Please try again later");
+        default:
+          throw new Error(
+            error.response?.data?.error || "Failed to update profile"
+          );
+      }
     }
-  );
-  if (!res.ok) throw new Error("Failed to update profile");
-  return await res.json();
+    throw new Error("Failed to update profile");
+  }
 };
-// ... existing imports and code ...
 
 // Camera types
 export type CameraType = {
