@@ -1,6 +1,6 @@
-import { Ionicons } from '@expo/vector-icons';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import React, { useEffect, useRef, useState } from 'react';
+import { Ionicons } from "@expo/vector-icons";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import React, { useEffect, useRef, useState } from "react";
 import {
   ActivityIndicator,
   Animated,
@@ -11,11 +11,11 @@ import {
   Text,
   TouchableOpacity,
   View,
-} from 'react-native';
-import { WebView } from 'react-native-webview';
-import { getPlotById, PlotType } from '../../../lib/api';
+} from "react-native";
+import { WebView } from "react-native-webview";
+import { getPlotById, PlotType } from "../../../lib/api";
 
-const { width } = Dimensions.get('window');
+const { width } = Dimensions.get("window");
 
 export default function PlotDetailScreen() {
   const { id } = useLocalSearchParams();
@@ -29,7 +29,7 @@ export default function PlotDetailScreen() {
 
   useEffect(() => {
     if (!id) {
-      setError('Plot ID is missing');
+      setError("Plot ID is missing");
       setLoading(false);
       return;
     }
@@ -37,10 +37,10 @@ export default function PlotDetailScreen() {
   }, [id]);
 
   useEffect(() => {
-    if (plot?.imageUrls?.length > 1) {
+    if (plot?.imageUrls && plot.imageUrls.length > 1) {
       const interval = setInterval(() => {
         setCurrentImageIndex((prevIndex) => {
-          const nextIndex = (prevIndex + 1) % plot.imageUrls.length;
+          const nextIndex = (prevIndex + 1) % (plot?.imageUrls?.length || 1);
           flatListRef.current?.scrollToIndex({
             index: nextIndex,
             animated: true,
@@ -59,22 +59,22 @@ export default function PlotDetailScreen() {
       setError(null);
 
       if (!id) {
-        throw new Error('Plot ID is required');
+        throw new Error("Plot ID is required");
       }
 
       const plotId = Array.isArray(id) ? id[0] : id;
       const data = await getPlotById(plotId);
 
       if (!data) {
-        throw new Error('Plot not found');
+        throw new Error("Plot not found");
       }
 
       setPlot(data);
     } catch (err) {
       const errorMessage =
-        err instanceof Error ? err.message : 'Failed to load plot details';
+        err instanceof Error ? err.message : "Failed to load plot details";
       setError(errorMessage);
-      console.error('Error fetching plot details:', err);
+      console.error("Error fetching plot details:", err);
     } finally {
       setLoading(false);
     }
@@ -99,7 +99,7 @@ export default function PlotDetailScreen() {
           <View
             key={index}
             className={`w-2 h-2 rounded-full mx-1 ${
-              index === currentImageIndex ? 'bg-white' : 'bg-white/50'
+              index === currentImageIndex ? "bg-white" : "bg-white/50"
             }`}
           />
         ))}
@@ -129,7 +129,7 @@ export default function PlotDetailScreen() {
         <View className="bg-white p-8 rounded-2xl shadow-sm items-center">
           <Ionicons name="alert-circle-outline" size={64} color="#FF6B35" />
           <Text className="text-gray-700 mt-4 text-center text-lg font-medium">
-            {error || 'Plot not found'}
+            {error || "Plot not found"}
           </Text>
           <TouchableOpacity
             onPress={fetchPlotDetails}
@@ -145,7 +145,7 @@ export default function PlotDetailScreen() {
   }
 
   return (
-    <View className="flex-1 bg-gray-50">
+    <View className="flex-1 bg-white">
       <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
         {/* Image Carousel */}
         <View className="relative">
@@ -173,6 +173,13 @@ export default function PlotDetailScreen() {
               <Ionicons name="heart-outline" size={24} color="#1F2937" />
             </TouchableOpacity>
           </View>
+
+          {/* Status Badge */}
+          {plot.status.toLowerCase() === "available" && (
+            <View className="absolute top-12 right-20 bg-green-500/90 px-4 py-2 rounded-full">
+              <Text className="text-white font-semibold">Available</Text>
+            </View>
+          )}
         </View>
 
         {/* Content Card */}
@@ -205,13 +212,6 @@ export default function PlotDetailScreen() {
 
               <View className="flex-row flex-wrap justify-between">
                 <View className="w-[48%] mb-4">
-                  <Text className="text-gray-500 text-sm mb-1">Type</Text>
-                  <Text className="text-gray-900 font-semibold">
-                    Farm Land Sale
-                  </Text>
-                </View>
-
-                <View className="w-[48%] mb-4">
                   <Text className="text-gray-500 text-sm mb-1">Plot Area</Text>
                   <Text className="text-gray-900 font-semibold">
                     {plot.dimension}
@@ -219,17 +219,22 @@ export default function PlotDetailScreen() {
                 </View>
 
                 <View className="w-[48%] mb-4">
-                  <Text className="text-gray-500 text-sm mb-1">Dimension</Text>
-                  <Text className="text-gray-900 font-semibold">
-                    {plot.dimension}
+                  <Text className="text-gray-500 text-sm mb-1">Facing</Text>
+                  <Text className="text-gray-900 font-semibold capitalize">
+                    {plot.facing}
                   </Text>
                 </View>
 
                 <View className="w-[48%] mb-4">
-                  <Text className="text-gray-500 text-sm mb-1">Facing</Text>
+                  <Text className="text-gray-500 text-sm mb-1">Price</Text>
                   <Text className="text-gray-900 font-semibold">
-                    {plot.facing}
+                    {plot.priceLabel}
                   </Text>
+                </View>
+
+                <View className="w-[48%] mb-4">
+                  <Text className="text-gray-500 text-sm mb-1">Type</Text>
+                  <Text className="text-gray-900 font-semibold">Farm Land</Text>
                 </View>
               </View>
             </View>
@@ -240,7 +245,7 @@ export default function PlotDetailScreen() {
                 About Property
               </Text>
               <Text className="text-gray-600 leading-6">
-                This agriculture/farm plot is available for sale at{' '}
+                This agriculture/farm plot is available for sale at{" "}
                 {plot.location}. It is a licensed plot in a very good area, the
                 plot is measuring {plot.dimension}
                 and priced {plot.priceLabel}.
@@ -325,59 +330,23 @@ export default function PlotDetailScreen() {
                 )}
               </View>
             </View>
-
-            {/* Status and Report */}
-            <View className="flex-row justify-between items-center mb-6">
-              <View>
-                <Text className="text-gray-500 text-sm mb-1">Status</Text>
-                <Text
-                  className={`font-semibold text-base ${
-                    plot.status === 'available'
-                      ? 'text-green-600'
-                      : 'text-red-500'
-                  }`}
-                >
-                  {plot.status === 'available' ? 'Available' : 'Sold Out'}
-                </Text>
-              </View>
-
-              <TouchableOpacity className="flex-row items-center bg-gray-100 px-4 py-2 rounded-full">
-                <Ionicons name="flag-outline" size={16} color="#6B7280" />
-                <Text className="text-gray-600 ml-2 font-medium">Report</Text>
-              </TouchableOpacity>
-            </View>
-
-            {/* Disclaimer */}
-            <View className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
-              <Text className="text-yellow-800 font-semibold mb-2">
-                Disclaimer
-              </Text>
-              <Text className="text-yellow-700 text-sm leading-5">
-                All information displayed is by courtesy the user and displayed
-                on the website for informational purposes only and space made
-                available at our website.
-              </Text>
-              <TouchableOpacity className="mt-2">
-                <Text className="text-orange-600 font-medium text-sm">
-                  Read More
-                </Text>
-              </TouchableOpacity>
-            </View>
           </View>
         </View>
       </ScrollView>
 
       {/* Fixed Bottom Button */}
-      <View className="bg-white border-t border-gray-200 px-4 py-4 pb-8">
-        <TouchableOpacity
-          className="bg-orange-500 py-4 rounded-2xl shadow-lg"
-          onPress={() => router.push(`/(guest)/book-visit/${plot.id}`)}
-        >
-          <Text className="text-white text-center font-bold text-lg">
-            Book visit
-          </Text>
-        </TouchableOpacity>
-      </View>
+      {plot.status.toLowerCase() === "available" && (
+        <View className="bg-white border-t border-gray-200 px-4 py-4 pb-8">
+          <TouchableOpacity
+            className="bg-orange-500 py-4 rounded-2xl shadow-lg"
+            onPress={() => router.push(`/(guest)/book-visit/${plot.id}`)}
+          >
+            <Text className="text-white text-center font-bold text-lg">
+              Book visit
+            </Text>
+          </TouchableOpacity>
+        </View>
+      )}
     </View>
   );
 }
