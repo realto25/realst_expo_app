@@ -3,19 +3,40 @@
     "preview": {
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "API_URL": "https://main-admin-dashboard-orpin.vercel.app/api",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c3Rlcmxpbmctc3BpZGVyLTUwLmNsZXJrLmFjY291bnRzLmRldiQ"
       }
     },
     "preview2": {
       "android": {
         "gradleCommand": ":app:assembleRelease"
+      },
+      "env": {
+        "API_URL": "https://main-admin-dashboard-orpin.vercel.app/api",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c3Rlcmxpbmctc3BpZGVyLTUwLmNsZXJrLmFjY291bnRzLmRldiQ"
       }
     },
     "preview3": {
-      "developmentClient": true
+      "developmentClient": true,
+      "env": {
+        "API_URL": "https://main-admin-dashboard-orpin.vercel.app/api",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c3Rlcmxpbmctc3BpZGVyLTUwLmNsZXJrLmFjY291bnRzLmRldiQ"
+      }
     },
     "preview4": {
-      "distribution": "internal"
+      "distribution": "internal",
+      "env": {
+        "API_URL": "https://main-admin-dashboard-orpin.vercel.app/api",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c3Rlcmxpbmctc3BpZGVyLTUwLmNsZXJrLmFjY291bnRzLmRldiQ"
+      }
     },
-    "production": {}
+    "production": {
+      "env": {
+        "API_URL": "https://main-admin-dashboard-orpin.vercel.app/api",
+        "EXPO_PUBLIC_CLERK_PUBLISHABLE_KEY": "pk_test_c3Rlcmxpbmctc3BpZGVyLTUwLmNsZXJrLmFjY291bnRzLmRldiQ"
+      }
+    }
   }
 }
