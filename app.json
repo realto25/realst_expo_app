@@ -46,7 +46,9 @@
       "router": {},
       "eas": {
         "projectId": "556100a7-38cb-4392-b30b-eca6751e29fe"
-      }
+      },
+      "API_URL": "https://main-admin-dashboard-orpin.vercel.app/api",
+      "CLERK_PUBLISHABLE_KEY": "pk_test_c3Rlcmxpbmctc3BpZGVyLTUwLmclerck.accounts.dev$"
     }
   }
 }
