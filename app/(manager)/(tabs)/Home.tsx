@@ -22,10 +22,7 @@ import {
   getAllPlots,
   getProjects,
   getUserFeedback,
-  getVisitRequests,
-  PlotType,
-  ProjectType,
-  VisitRequest,
+  getVisitRequests
 } from "../../../lib/api"; // Ensure this path is correct
 
 const screenWidth = Dimensions.get("window").width;
@@ -51,6 +48,10 @@ interface DashboardStats {
   pendingVisits: number;
   avgRating: number;
   recentSales: number;
+}
+
+interface UserMetadata {
+  role?: "guest" | "client" | "manager";
 }
 
 export default function ManagerHomeTabScreen() {
